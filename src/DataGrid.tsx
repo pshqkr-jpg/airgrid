@@ -39,7 +39,6 @@ import type { ColumnDef, AirgridMeta, ViewState } from "./types";
 import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
 import { HeaderFilterPopover } from "./HeaderFilterPopover";
-import { FilterChipBar } from "./FilterChipBar";
 import { SortPriorityPanel } from "./SortPriorityPanel";
 import { HideColumnsMenu } from "./HideColumnsMenu";
 import { EditableCell } from "./EditableCell";
@@ -258,8 +257,6 @@ export function DataGrid<TRow extends Record<string, unknown>>(
 
   return (
     <div className={className}>
-      <FilterChipBar table={table} onChipClick={openPopover} />
-
       <div style={controlsBarStyle}>
         <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
           {rows.length === data.length

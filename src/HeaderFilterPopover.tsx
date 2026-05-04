@@ -267,13 +267,16 @@ const sectionLabelStyle: React.CSSProperties = {
   marginBottom: 4,
 };
 
+// 호스트 CSS 가 button { height: 30px; background: var(--accent); color: var(--fg-on-accent) }
+// 같이 강하게 reset 하는 경우에도 안 망가지게 height/min-height/font 모두 inline.
 const popoverButtonStyle: React.CSSProperties = {
   fontSize: 11,
   padding: "4px 8px",
+  height: "auto",
+  minHeight: 0,
   border: "1px solid var(--airgrid-border, #e5e7eb)",
   borderRadius: 4,
   background: "transparent",
-  // 호스트 CSS 가 button color 를 흰색으로 둔 경우 텍스트 안 보이는 버그 (#컬럼-숨기기-빈칸).
   color: "var(--airgrid-fg, #1f2937)",
   cursor: "pointer",
   whiteSpace: "nowrap",
