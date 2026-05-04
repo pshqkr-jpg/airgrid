@@ -422,6 +422,7 @@ function buildCellRenderer<TRow extends Record<string, unknown>>(
         value={info.getValue()}
         inputType={inputType}
         align={c.align}
+        display={c.cell ? c.cell(info.row.original) : undefined}
         onCommit={(next) => {
           const rowId = String(info.row.original[rowKey]);
           onCellEdit(rowId, c.id, next);
