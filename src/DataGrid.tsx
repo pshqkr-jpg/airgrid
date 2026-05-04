@@ -1,20 +1,26 @@
-// airgrid DataGrid — 가상 스크롤 + CSS grid 레이아웃.
+// airgrid DataGrid — 가상 스크롤 + CSS grid 레이아웃 + 컬럼 필터/정렬/hide.
 //
 // 호스트 앱이 className 또는 CSS variables 로 스타일 override:
 //   --airgrid-bg, --airgrid-header-bg, --airgrid-border,
 //   --airgrid-border-subtle, --airgrid-row-hover.
-//
-// Phase 0 — 기본 표시 + 가상 스크롤만. 필터/정렬/hide/편집은 후속 Step.
 
-import { useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
   flexRender,
   type ColumnDef as TSColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { ColumnDef } from "./types";
+import type { ColumnDef, AirgridMeta } from "./types";
+import { pickFilterFn } from "./filterFns";
+import { HeaderCell } from "./HeaderCell";
+import { HideColumnsMenu } from "./HideColumnsMenu";
 
 export type DataGridProps<TRow> = {
   data: TRow[];
@@ -29,6 +35,8 @@ export type DataGridProps<TRow> = {
   className?: string;
   /** data 가 비었을 때 렌더할 노드. */
   emptyText?: ReactNode;
+  /** 헤더 row 의 추정 높이 (정렬+필터 input 포함, default 60px). */
+  headerHeight?: number;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -36,28 +44,53 @@ export function DataGrid<TRow extends Record<string, unknown>>(
 ) {
   const {
     data, columns, rowKey,
-    height = 600, estimatedRowHeight = 32,
+    height = 600, estimatedRowHeight = 32, headerHeight = 60,
     className, emptyText,
   } = props;
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    () => Object.fromEntries(
+      columns.filter((c) => c.defaultVisible === false).map((c) => [c.id, false]),
+    ),
+  );
+
   const tableColumns = useMemo<TSColumnDef<TRow>[]>(
-    () => columns.map((c) => ({
-      id: c.id,
-      header: c.header,
-      accessorKey: c.accessorKey,
-      cell: c.cell
-        ? (info) => c.cell!(info.row.original)
-        : undefined,
-      meta: { align: c.align, width: c.width },
-    })),
+    () => columns.map((c) => {
+      const meta: AirgridMeta = {
+        align: c.align,
+        width: c.width,
+        filterType: c.filterType,
+        selectOptions: c.selectOptions,
+      };
+      const def: TSColumnDef<TRow> = {
+        id: c.id,
+        header: c.header,
+        accessorKey: c.accessorKey,
+        cell: c.cell ? (info) => c.cell!(info.row.original) : undefined,
+        meta,
+        enableSorting: c.sortable !== false,
+        enableColumnFilter: !!c.filterType,
+      };
+      const filterFn = pickFilterFn(c.filterType);
+      if (filterFn) def.filterFn = filterFn;
+      return def;
+    }),
     [columns],
   );
 
   const table = useReactTable({
     data,
     columns: tableColumns,
-    getCoreRowModel: getCoreRowModel(),
+    state: { sorting, columnFilters, columnVisibility },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
     getRowId: (row) => String(row[rowKey]),
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,101 +103,113 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     overscan: 10,
   });
 
-  // CSS grid template — 컬럼별 width prop 또는 기본값 minmax(80px, 1fr).
+  // 보이는 컬럼만 grid template 에 반영. hide 변경 시 자동 재계산.
+  const visibleColumns = table.getVisibleLeafColumns();
   const gridTemplateColumns = useMemo(
-    () => columns.map((c) => c.width ?? "minmax(80px, 1fr)").join(" "),
-    [columns],
+    () => visibleColumns
+      .map((c) => (c.columnDef.meta as AirgridMeta | undefined)?.width ?? "minmax(80px, 1fr)")
+      .join(" "),
+    [visibleColumns],
   );
 
-  if (data.length === 0 && emptyText) {
-    return (
-      <div className={className} style={emptyContainerStyle}>
-        {emptyText}
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={containerRef}
-      className={className}
-      style={{ ...containerStyle, height }}
-      role="grid"
-    >
-      {/* sticky header */}
-      <div style={{ ...headerRowStyle, gridTemplateColumns }} role="row">
-        {table.getHeaderGroups()[0]?.headers.map((h) => {
-          const meta = h.column.columnDef.meta as { align?: string } | undefined;
-          return (
-            <div
-              key={h.id}
-              role="columnheader"
-              style={{
-                ...headerCellStyle,
-                textAlign: meta?.align === "right" ? "right" : "left",
-              }}
-            >
-              {flexRender(h.column.columnDef.header, h.getContext())}
-            </div>
-          );
-        })}
+    <div className={className}>
+      {/* 우측 상단 컨트롤 바 — hide menu, filtered count */}
+      <div style={controlsBarStyle}>
+        <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
+          {rows.length === data.length
+            ? `${data.length}행`
+            : `${rows.length}/${data.length}행 (필터됨)`}
+        </span>
+        <HideColumnsMenu table={table} />
       </div>
 
-      {/* virtualized body — 컨테이너 height = 전체 row 합 */}
       <div
-        style={{
-          height: virtualizer.getTotalSize(),
-          width: "100%",
-          position: "relative",
-        }}
+        ref={containerRef}
+        style={{ ...containerStyle, height }}
+        role="grid"
       >
-        {virtualizer.getVirtualItems().map((vRow) => {
-          const row = rows[vRow.index];
-          return (
-            <div
-              key={row.id}
-              role="row"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: vRow.size,
-                transform: `translateY(${vRow.start}px)`,
-                display: "grid",
-                gridTemplateColumns,
-                borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
-              }}
-              data-airgrid-row
-            >
-              {row.getVisibleCells().map((cell) => {
-                const meta = cell.column.columnDef.meta as
-                  | { align?: string }
-                  | undefined;
-                return (
-                  <div
-                    key={cell.id}
-                    role="gridcell"
-                    style={{
-                      ...cellStyle,
-                      textAlign: meta?.align === "right" ? "right" : "left",
-                    }}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+        {/* sticky header — 정렬 + 필터 */}
+        <div
+          style={{
+            ...headerRowStyle,
+            gridTemplateColumns,
+            minHeight: headerHeight,
+          }}
+          role="row"
+        >
+          {table.getHeaderGroups()[0]?.headers.map((h) => (
+            <HeaderCell key={h.id} header={h} />
+          ))}
+        </div>
+
+        {/* virtualized body */}
+        {rows.length === 0 ? (
+          <div style={emptyRowStyle}>
+            {emptyText ?? (data.length === 0 ? "데이터 없음" : "조건에 맞는 행 없음")}
+          </div>
+        ) : (
+          <div
+            style={{
+              height: virtualizer.getTotalSize(),
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((vRow) => {
+              const row = rows[vRow.index];
+              return (
+                <div
+                  key={row.id}
+                  role="row"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: vRow.size,
+                    transform: `translateY(${vRow.start}px)`,
+                    display: "grid",
+                    gridTemplateColumns,
+                    borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
+                  }}
+                  data-airgrid-row
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta as AirgridMeta | undefined;
+                    return (
+                      <div
+                        key={cell.id}
+                        role="gridcell"
+                        style={{
+                          ...cellStyle,
+                          textAlign: meta?.align === "right" ? "right" : "left",
+                          justifyContent: meta?.align === "right" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ─── 기본 스타일 ─────────────────────────────────────────────────
-// 모두 inline 으로 — 호스트 앱이 className 으로 override 가능. CSS variables
-// 로 색상 조절 (Linear / Airtable / 토스 톤 모두 호환).
+
+const controlsBarStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "4px 0",
+  marginBottom: 4,
+};
 
 const containerStyle: React.CSSProperties = {
   position: "relative",
@@ -184,18 +229,6 @@ const headerRowStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--airgrid-border, #e5e7eb)",
 };
 
-const headerCellStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.02em",
-  color: "var(--airgrid-header-fg, #6b7280)",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
 const cellStyle: React.CSSProperties = {
   padding: "7px 10px",
   display: "flex",
@@ -205,11 +238,8 @@ const cellStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
 };
 
-const emptyContainerStyle: React.CSSProperties = {
+const emptyRowStyle: React.CSSProperties = {
   padding: 40,
   textAlign: "center",
   color: "var(--airgrid-empty-fg, #9ca3af)",
-  background: "var(--airgrid-bg, #ffffff)",
-  border: "1px dashed var(--airgrid-border, #e5e7eb)",
-  borderRadius: 6,
 };

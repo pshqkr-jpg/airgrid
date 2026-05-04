@@ -1,19 +1,21 @@
-// 공유 타입. Step B 이후 확장 (필터 종류, edit 핸들러 등).
+// 공유 타입.
 
 import type { ReactNode } from "react";
 
 export type FilterType =
   | "text"          // contains (case-insensitive)
   | "numberRange"   // min / max
-  | "select"        // multi-select
+  | "select"        // multi-select (any-of)
   | "boolean";
 
 export type ColumnDef<TRow> = {
   id: string;
   header: string;
   accessorKey: keyof TRow & string;
-  /** 필터 타입. 없으면 컬럼은 필터 ✗. */
+  /** 필터 타입. 없으면 컬럼 필터 ✗. */
   filterType?: FilterType;
+  /** filterType="select" 일 때의 옵션 list. 없으면 데이터에서 자동 추출. */
+  selectOptions?: string[];
   /** 인라인 편집 가능 여부. true 면 cell 이 input. */
   editable?: boolean;
   /** 셀 커스텀 렌더. 없으면 raw value. */
@@ -24,4 +26,14 @@ export type ColumnDef<TRow> = {
   defaultVisible?: boolean;
   /** CSS grid template column value. e.g. "minmax(120px, 1fr)" */
   width?: string;
+  /** 정렬 가능 여부. 기본 true. */
+  sortable?: boolean;
+};
+
+/** TanStack Table column.meta 에 박는 airgrid 메타 정보. */
+export type AirgridMeta = {
+  align?: "left" | "right";
+  width?: string;
+  filterType?: FilterType;
+  selectOptions?: string[];
 };
