@@ -229,13 +229,19 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   );
 }
 
-// 컬럼 정의에서 cell 렌더 함수 빌드. editable 이고 onCellEdit 가 있으면
-// EditableCell 로 wrap. 사용자 정의 c.cell 은 read-only 모드 우선 (편집 ✗).
+// 컬럼 정의에서 cell 렌더 함수 빌드.
+//
+//   - 사용자 cell(row) 정의 + editable ✗ → 그 함수
+//   - editable + onCellEdit → EditableCell
+//   - 둘 다 없음 → default: accessor 값을 string 으로 (null/undefined 는 빈 셀)
+//
+// flexRender 는 cell 이 undefined 면 null 만 렌더해서 빈 셀이 보이는 버그가
+// 있었음. 항상 함수 반환으로 명시.
 function buildCellRenderer<TRow extends Record<string, unknown>>(
   c: ColumnDef<TRow>,
   onCellEdit: ((rowId: string, columnId: string, value: unknown) => void) | undefined,
   rowKey: keyof TRow & string,
-): ((info: CellContext<TRow, unknown>) => ReactNode) | undefined {
+): (info: CellContext<TRow, unknown>) => ReactNode {
   if (c.cell && !c.editable) {
     return (info) => c.cell!(info.row.original);
   }
@@ -254,7 +260,11 @@ function buildCellRenderer<TRow extends Record<string, unknown>>(
       />
     );
   }
-  return undefined; // TanStack 기본 — accessor value 그대로
+  return (info) => {
+    const v = info.getValue();
+    if (v == null || v === "") return null;
+    return String(v);
+  };
 }
 
 // ─── 기본 스타일 ─────────────────────────────────────────────────
