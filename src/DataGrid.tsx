@@ -1,10 +1,10 @@
-// airgrid DataGrid — 가상 스크롤 + CSS grid 레이아웃 + 컬럼 필터/정렬/hide.
+// airgrid DataGrid — 가상 스크롤 + CSS grid + 필터/정렬/hide + 편집 + persistence.
 //
 // 호스트 앱이 className 또는 CSS variables 로 스타일 override:
 //   --airgrid-bg, --airgrid-header-bg, --airgrid-border,
-//   --airgrid-border-subtle, --airgrid-row-hover.
+//   --airgrid-border-subtle, --airgrid-row-hover, --airgrid-empty-fg.
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,12 +15,15 @@ import {
   type SortingState,
   type ColumnFiltersState,
   type VisibilityState,
+  type CellContext,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ColumnDef, AirgridMeta } from "./types";
 import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
 import { HideColumnsMenu } from "./HideColumnsMenu";
+import { EditableCell } from "./EditableCell";
+import { loadState, saveState } from "./persistence";
 
 export type DataGridProps<TRow> = {
   data: TRow[];
@@ -37,6 +40,20 @@ export type DataGridProps<TRow> = {
   emptyText?: ReactNode;
   /** 헤더 row 의 추정 높이 (정렬+필터 input 포함, default 60px). */
   headerHeight?: number;
+  /**
+   * 편집 가능 컬럼 (editable: true) 의 셀 commit 콜백.
+   *   rowId      = getRowId(row) 결과 (즉 row[rowKey])
+   *   columnId   = ColumnDef.id
+   *   value      = number | string | null (input type 에 따라)
+   * 없으면 editable 컬럼이라도 read-only 로 동작.
+   */
+  onCellEdit?: (rowId: string, columnId: string, value: unknown) => void;
+  /**
+   * 정의 시 sorting / columnFilters / columnVisibility 가 localStorage 에
+   * 자동 저장 / 복원. 같은 도메인의 여러 grid 가 키 충돌하지 않게 namespace.
+   * 예: 'wilogis-stock-inventory'.
+   */
+  filterPersistKey?: string;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -46,15 +63,30 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     data, columns, rowKey,
     height = 600, estimatedRowHeight = 32, headerHeight = 60,
     className, emptyText,
+    onCellEdit, filterPersistKey,
   } = props;
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  // localStorage 복원 — 첫 마운트만.
+  const restored = useMemo(
+    () => (filterPersistKey ? loadState(filterPersistKey) : null),
+    [filterPersistKey],
+  );
+
+  const [sorting, setSorting] = useState<SortingState>(restored?.sorting ?? []);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    restored?.columnFilters ?? [],
+  );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    () => Object.fromEntries(
+    restored?.columnVisibility ?? Object.fromEntries(
       columns.filter((c) => c.defaultVisible === false).map((c) => [c.id, false]),
     ),
   );
+
+  // state 변경 시 localStorage 동기화.
+  useEffect(() => {
+    if (!filterPersistKey) return;
+    saveState(filterPersistKey, { sorting, columnFilters, columnVisibility });
+  }, [filterPersistKey, sorting, columnFilters, columnVisibility]);
 
   const tableColumns = useMemo<TSColumnDef<TRow>[]>(
     () => columns.map((c) => {
@@ -68,7 +100,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
         id: c.id,
         header: c.header,
         accessorKey: c.accessorKey,
-        cell: c.cell ? (info) => c.cell!(info.row.original) : undefined,
+        cell: buildCellRenderer(c, onCellEdit, rowKey),
         meta,
         enableSorting: c.sortable !== false,
         enableColumnFilter: !!c.filterType,
@@ -77,7 +109,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       if (filterFn) def.filterFn = filterFn;
       return def;
     }),
-    [columns],
+    [columns, onCellEdit, rowKey],
   );
 
   const table = useReactTable({
@@ -103,7 +135,6 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     overscan: 10,
   });
 
-  // 보이는 컬럼만 grid template 에 반영. hide 변경 시 자동 재계산.
   const visibleColumns = table.getVisibleLeafColumns();
   const gridTemplateColumns = useMemo(
     () => visibleColumns
@@ -114,7 +145,6 @@ export function DataGrid<TRow extends Record<string, unknown>>(
 
   return (
     <div className={className}>
-      {/* 우측 상단 컨트롤 바 — hide menu, filtered count */}
       <div style={controlsBarStyle}>
         <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
           {rows.length === data.length
@@ -129,7 +159,6 @@ export function DataGrid<TRow extends Record<string, unknown>>(
         style={{ ...containerStyle, height }}
         role="grid"
       >
-        {/* sticky header — 정렬 + 필터 */}
         <div
           style={{
             ...headerRowStyle,
@@ -143,7 +172,6 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           ))}
         </div>
 
-        {/* virtualized body */}
         {rows.length === 0 ? (
           <div style={emptyRowStyle}>
             {emptyText ?? (data.length === 0 ? "데이터 없음" : "조건에 맞는 행 없음")}
@@ -199,6 +227,34 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       </div>
     </div>
   );
+}
+
+// 컬럼 정의에서 cell 렌더 함수 빌드. editable 이고 onCellEdit 가 있으면
+// EditableCell 로 wrap. 사용자 정의 c.cell 은 read-only 모드 우선 (편집 ✗).
+function buildCellRenderer<TRow extends Record<string, unknown>>(
+  c: ColumnDef<TRow>,
+  onCellEdit: ((rowId: string, columnId: string, value: unknown) => void) | undefined,
+  rowKey: keyof TRow & string,
+): ((info: CellContext<TRow, unknown>) => ReactNode) | undefined {
+  if (c.cell && !c.editable) {
+    return (info) => c.cell!(info.row.original);
+  }
+  if (c.editable && onCellEdit) {
+    const inputType: "text" | "number" =
+      c.filterType === "numberRange" ? "number" : "text";
+    return (info) => (
+      <EditableCell
+        value={info.getValue()}
+        inputType={inputType}
+        align={c.align}
+        onCommit={(next) => {
+          const rowId = String(info.row.original[rowKey]);
+          onCellEdit(rowId, c.id, next);
+        }}
+      />
+    );
+  }
+  return undefined; // TanStack 기본 — accessor value 그대로
 }
 
 // ─── 기본 스타일 ─────────────────────────────────────────────────
