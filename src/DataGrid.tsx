@@ -88,6 +88,11 @@ export type DataGridProps<TRow> = {
   viewState?: ViewState;
   /** view state 변경 시 호출. 호스트가 view 영속화. */
   onViewStateChange?: (next: ViewState) => void;
+  /**
+   * 행 본문 클릭 시 호출. 상세 모달 띄우기용. cell 안의 button / input
+   * 등은 본인 onClick 에서 e.stopPropagation() 해야 행 클릭 안 트리거.
+   */
+  onRowClick?: (row: TRow) => void;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -100,6 +105,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     onCellEdit, filterPersistKey,
     onHideRequestOnDefault, defaultViewLocked,
     viewState, onViewStateChange,
+    onRowClick,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -338,6 +344,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                 <div
                   key={row.id}
                   role="row"
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -348,6 +355,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                     display: "grid",
                     gridTemplateColumns,
                     borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
+                    cursor: onRowClick ? "pointer" : undefined,
                   }}
                   data-airgrid-row
                 >
