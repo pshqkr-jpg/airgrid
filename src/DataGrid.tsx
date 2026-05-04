@@ -222,6 +222,43 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // 행 클릭 vs 더블클릭 구분. 단일 클릭은 ROW_CLICK_DELAY 후 onRowClick 발화 —
+  // 그 사이에 같은 row 에 대한 두 번째 click 이 오면 (dblclick 시작 신호)
+  // 타이머만 취소해 모달이 안 뜨게. 다른 row click 이면 기존 pending 즉시
+  // 발화 후 새 row 로 timer 재설정.
+  const ROW_CLICK_DELAY = 220;
+  const rowClickPending = useRef<
+    { rowId: string; timer: ReturnType<typeof setTimeout>; row: TRow } | null
+  >(null);
+  const handleRowClick = (row: TRow) => {
+    if (!onRowClick) return;
+    const id = String(row[rowKey]);
+    const pending = rowClickPending.current;
+    if (pending && pending.rowId === id) {
+      // 같은 row 두 번째 click — dblclick 시작 신호, 모달 ✗.
+      clearTimeout(pending.timer);
+      rowClickPending.current = null;
+      return;
+    }
+    if (pending) {
+      // 다른 row 빠른 클릭 — 기존 pending 즉시 발화.
+      clearTimeout(pending.timer);
+      onRowClick(pending.row);
+    }
+    const timer = setTimeout(() => {
+      rowClickPending.current = null;
+      onRowClick(row);
+    }, ROW_CLICK_DELAY);
+    rowClickPending.current = { rowId: id, timer, row };
+  };
+  // dblclick (cell 에서 stopPropagation 안 한 경우) 도 timer 취소.
+  const handleRowDoubleClick = () => {
+    if (rowClickPending.current) {
+      clearTimeout(rowClickPending.current.timer);
+      rowClickPending.current = null;
+    }
+  };
+
   // 드래그 종료 → arrayMove 로 columnOrder 재계산. 빈 배열에서 시작하면
   // 현재 leaf column 순서를 baseline 으로 한 번 시드.
   const handleDragEnd = (event: DragEndEvent) => {
@@ -344,7 +381,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                 <div
                   key={row.id}
                   role="row"
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  onClick={onRowClick ? () => handleRowClick(row.original) : undefined}
+                  onDoubleClick={onRowClick ? handleRowDoubleClick : undefined}
                   style={{
                     position: "absolute",
                     top: 0,
