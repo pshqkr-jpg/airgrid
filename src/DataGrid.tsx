@@ -21,6 +21,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ColumnDef, AirgridMeta } from "./types";
 import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
+import { HeaderFilterPopover } from "./HeaderFilterPopover";
+import { FilterChipBar } from "./FilterChipBar";
 import { HideColumnsMenu } from "./HideColumnsMenu";
 import { EditableCell } from "./EditableCell";
 import { loadState, saveState } from "./persistence";
@@ -38,7 +40,7 @@ export type DataGridProps<TRow> = {
   className?: string;
   /** data 가 비었을 때 렌더할 노드. */
   emptyText?: ReactNode;
-  /** 헤더 row 의 추정 높이 (정렬+필터 input 포함, default 60px). */
+  /** 헤더 row 의 추정 높이. */
   headerHeight?: number;
   /**
    * 편집 가능 컬럼 (editable: true) 의 셀 commit 콜백.
@@ -51,9 +53,16 @@ export type DataGridProps<TRow> = {
   /**
    * 정의 시 sorting / columnFilters / columnVisibility 가 localStorage 에
    * 자동 저장 / 복원. 같은 도메인의 여러 grid 가 키 충돌하지 않게 namespace.
-   * 예: 'wilogis-stock-inventory'.
    */
   filterPersistKey?: string;
+  /**
+   * default view (시스템 view) 의 visibility 변경 시도 시 호출. 호출자가
+   * 사용자에게 fork 안내 (예: "새 view 로 저장하시겠어요?") + 새 view 로
+   * 분기. 없으면 일반적인 visibility 토글 동작.
+   */
+  onHideRequestOnDefault?: (columnId: string) => void;
+  /** 위 콜백을 활성화할지. true 면 컬럼 hide 시도 = onHideRequestOnDefault 호출. */
+  defaultViewLocked?: boolean;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -61,9 +70,10 @@ export function DataGrid<TRow extends Record<string, unknown>>(
 ) {
   const {
     data, columns, rowKey,
-    height = 600, estimatedRowHeight = 32, headerHeight = 60,
+    height = 600, estimatedRowHeight = 32, headerHeight = 32,
     className, emptyText,
     onCellEdit, filterPersistKey,
+    onHideRequestOnDefault, defaultViewLocked,
   } = props;
 
   // localStorage 복원 — 첫 마운트만.
@@ -81,6 +91,12 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       columns.filter((c) => c.defaultVisible === false).map((c) => [c.id, false]),
     ),
   );
+
+  // popover state — 우클릭으로 띄우는 헤더 menu.
+  const [popoverState, setPopoverState] = useState<{
+    columnId: string;
+    anchor: { x: number; y: number };
+  } | null>(null);
 
   // state 변경 시 localStorage 동기화.
   useEffect(() => {
@@ -123,6 +139,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    enableMultiSort: true,
+    isMultiSortEvent: (e) => (e as React.MouseEvent).shiftKey,
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,13 +161,25 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     [visibleColumns],
   );
 
+  // chip 클릭 또는 헤더 우클릭 → popover 좌표 set.
+  const openPopover = (columnId: string, anchor: { x: number; y: number }) =>
+    setPopoverState({ columnId, anchor });
+  const closePopover = () => setPopoverState(null);
+
+  const popoverColumn = popoverState ? table.getColumn(popoverState.columnId) : null;
+
   return (
     <div className={className}>
+      <FilterChipBar table={table} onChipClick={openPopover} />
+
       <div style={controlsBarStyle}>
         <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
           {rows.length === data.length
             ? `${data.length}행`
             : `${rows.length}/${data.length}행 (필터됨)`}
+          <span style={{ marginLeft: 8, color: "var(--airgrid-empty-fg, #9ca3af)" }}>
+            헤더 우클릭으로 필터·정렬
+          </span>
         </span>
         <HideColumnsMenu table={table} />
       </div>
@@ -168,7 +198,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           role="row"
         >
           {table.getHeaderGroups()[0]?.headers.map((h) => (
-            <HeaderCell key={h.id} header={h} />
+            <HeaderCell key={h.id} header={h} onContextMenu={openPopover} />
           ))}
         </div>
 
@@ -225,18 +255,24 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           </div>
         )}
       </div>
+
+      {popoverColumn && popoverState && (
+        <HeaderFilterPopover
+          column={popoverColumn}
+          anchor={popoverState.anchor}
+          onClose={closePopover}
+          defaultViewLocked={defaultViewLocked}
+          onHideRequest={onHideRequestOnDefault}
+        />
+      )}
     </div>
   );
 }
 
 // 컬럼 정의에서 cell 렌더 함수 빌드.
-//
 //   - 사용자 cell(row) 정의 + editable ✗ → 그 함수
 //   - editable + onCellEdit → EditableCell
 //   - 둘 다 없음 → default: accessor 값을 string 으로 (null/undefined 는 빈 셀)
-//
-// flexRender 는 cell 이 undefined 면 null 만 렌더해서 빈 셀이 보이는 버그가
-// 있었음. 항상 함수 반환으로 명시.
 function buildCellRenderer<TRow extends Record<string, unknown>>(
   c: ColumnDef<TRow>,
   onCellEdit: ((rowId: string, columnId: string, value: unknown) => void) | undefined,

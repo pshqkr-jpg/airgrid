@@ -1,28 +1,43 @@
-// 헤더 셀 — 정렬 indicator + 컬럼별 필터 input.
+// 헤더 셀 — 좌클릭 정렬, 우클릭 popover.
+//
+// 항상 보이는 input row 는 제거 (Phase A1). 필터 input 은 popover 안에서만.
+// 활성 필터 / 정렬 indicator 가 헤더에 작은 마커로 표시.
 
 import type { Header } from "@tanstack/react-table";
 import { flexRender } from "@tanstack/react-table";
 import type { AirgridMeta } from "./types";
 
-export function HeaderCell<TRow>({ header }: { header: Header<TRow, unknown> }) {
+export type HeaderCellProps<TRow> = {
+  header: Header<TRow, unknown>;
+  /** 우클릭 시 호출. 호출자 (DataGrid) 가 popover 띄우기. */
+  onContextMenu?: (columnId: string, anchor: { x: number; y: number }) => void;
+};
+
+export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow>) {
   const meta = header.column.columnDef.meta as AirgridMeta | undefined;
   const align = meta?.align === "right" ? "right" : "left";
   const canSort = header.column.getCanSort();
   const sort = header.column.getIsSorted(); // false | "asc" | "desc"
+  const sortIndex = header.column.getSortIndex(); // -1 | 0 | 1 | 2 ...
+  const hasFilter = header.column.getFilterValue() != null
+    && header.column.getFilterValue() !== "";
 
   return (
     <div
       role="columnheader"
-      style={{
-        padding: 0,
-        display: "flex",
-        flexDirection: "column",
-        borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)",
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu?.(header.column.id, { x: e.clientX, y: e.clientY });
       }}
+      style={{ borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)" }}
     >
       <button
         type="button"
-        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+        onClick={(e) => {
+          if (!canSort) return;
+          // Shift+click 은 다중 정렬 (TanStack 기본 동작).
+          header.column.getToggleSortingHandler()?.(e);
+        }}
         disabled={!canSort}
         style={{
           textAlign: align,
@@ -41,118 +56,65 @@ export function HeaderCell<TRow>({ header }: { header: Header<TRow, unknown> }) 
           gap: 4,
           width: "100%",
         }}
+        title="좌클릭: 정렬 / 우클릭: 필터·정렬·숨기기 메뉴"
       >
         <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
-        {sort === "asc" && <span aria-hidden="true">↑</span>}
-        {sort === "desc" && <span aria-hidden="true">↓</span>}
+        {sort === "asc" && <SortBadge index={sortIndex} dir="asc" />}
+        {sort === "desc" && <SortBadge index={sortIndex} dir="desc" />}
+        {hasFilter && <FilterDot />}
       </button>
-      {meta?.filterType && (
-        <FilterInput
-          filterType={meta.filterType}
-          selectOptions={meta.selectOptions}
-          value={header.column.getFilterValue()}
-          onChange={(v) => header.column.setFilterValue(v)}
-        />
-      )}
     </div>
   );
 }
 
-function FilterInput({
-  filterType, selectOptions, value, onChange,
-}: {
-  filterType: string;
-  selectOptions?: string[];
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  const baseStyle: React.CSSProperties = {
-    width: "100%",
-    fontSize: 11,
-    padding: "2px 6px",
-    border: "none",
-    borderTop: "1px solid var(--airgrid-border-subtle, #eceef1)",
-    background: "var(--airgrid-filter-bg, #ffffff)",
-    color: "var(--airgrid-filter-fg, #1f2937)",
-    boxSizing: "border-box",
-  };
-
-  if (filterType === "text") {
-    return (
-      <input
-        type="text"
-        placeholder="검색…"
-        value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value || undefined)}
-        style={baseStyle}
-      />
-    );
-  }
-
-  if (filterType === "numberRange") {
-    const range = (value as { min?: number; max?: number } | undefined) ?? {};
-    return (
-      <div style={{ display: "flex", borderTop: "1px solid var(--airgrid-border-subtle, #eceef1)" }}>
-        <input
-          type="number"
-          placeholder="min"
-          value={range.min ?? ""}
-          onChange={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            onChange({ ...range, min: v });
+function SortBadge({ index, dir }: { index: number; dir: "asc" | "desc" }) {
+  // 다중 정렬 시 1·2·3 우선순위 표시. 단일 정렬 (index=0) 은 화살표만.
+  const showIndex = index > 0;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 2,
+        fontSize: 10,
+        color: "var(--airgrid-sort-fg, #047857)",
+      }}
+      aria-label={`정렬 ${dir === "asc" ? "오름차순" : "내림차순"}${showIndex ? `, 우선순위 ${index + 1}` : ""}`}
+    >
+      <span aria-hidden>{dir === "asc" ? "↑" : "↓"}</span>
+      {showIndex && (
+        <span
+          style={{
+            display: "inline-block",
+            minWidth: 14,
+            padding: "0 3px",
+            borderRadius: 7,
+            background: "var(--airgrid-sort-badge-bg, #d1fae5)",
+            fontSize: 9,
+            fontWeight: 600,
+            textAlign: "center",
+            lineHeight: "13px",
           }}
-          style={{ ...baseStyle, borderTop: "none", borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)" }}
-        />
-        <input
-          type="number"
-          placeholder="max"
-          value={range.max ?? ""}
-          onChange={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            onChange({ ...range, max: v });
-          }}
-          style={{ ...baseStyle, borderTop: "none" }}
-        />
-      </div>
-    );
-  }
+        >
+          {index + 1}
+        </span>
+      )}
+    </span>
+  );
+}
 
-  if (filterType === "boolean") {
-    const v = value === true ? "true" : value === false ? "false" : "any";
-    return (
-      <select
-        value={v}
-        onChange={(e) => {
-          const next = e.target.value;
-          onChange(next === "any" ? undefined : next === "true");
-        }}
-        style={baseStyle}
-      >
-        <option value="any">전체</option>
-        <option value="true">예</option>
-        <option value="false">아니오</option>
-      </select>
-    );
-  }
-
-  if (filterType === "select" && selectOptions) {
-    const selected = (Array.isArray(value) ? value : []) as string[];
-    return (
-      <select
-        multiple
-        value={selected}
-        onChange={(e) => {
-          const next = Array.from(e.target.selectedOptions, (o) => o.value);
-          onChange(next.length === 0 ? undefined : next);
-        }}
-        style={{ ...baseStyle, height: 60 }}
-      >
-        {selectOptions.map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
-    );
-  }
-
-  return null;
+function FilterDot() {
+  return (
+    <span
+      aria-label="필터 활성"
+      style={{
+        display: "inline-block",
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: "var(--airgrid-filter-dot, #4f46e5)",
+        marginLeft: 2,
+      }}
+    />
+  );
 }
