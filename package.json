@@ -27,10 +27,10 @@
     "prepare": "npm run build"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
     "@tanstack/react-table": "^8",
-    "@tanstack/react-virtual": "^3"
+    "@tanstack/react-virtual": "^3",
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
     "@tanstack/react-table": "^8.20.5",
