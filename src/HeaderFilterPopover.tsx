@@ -1,6 +1,6 @@
 // 헤더 우클릭 시 띄우는 popover. 정렬 + 필터 + 컬럼 hide 한 곳에서.
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Column } from "@tanstack/react-table";
 import type { AirgridMeta } from "./types";
 
