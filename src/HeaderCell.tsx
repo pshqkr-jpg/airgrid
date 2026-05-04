@@ -22,8 +22,7 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
   const canSort = header.column.getCanSort();
   const sort = header.column.getIsSorted(); // false | "asc" | "desc"
   const sortIndex = header.column.getSortIndex(); // -1 | 0 | 1 | 2 ...
-  const hasFilter = header.column.getFilterValue() != null
-    && header.column.getFilterValue() !== "";
+  const hasFilter = isFilterActive(header.column.getFilterValue());
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: header.column.id });
@@ -155,6 +154,18 @@ function SortBadge({ index, dir }: { index: number; dir: "asc" | "desc" }) {
       )}
     </span>
   );
+}
+
+// 필터 indicator 활성 여부. 공백만 / 빈 객체 / 빈 배열 등 의미 없는 값은 false.
+function isFilterActive(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim() !== "";
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") {
+    const r = v as { min?: number; max?: number };
+    return r.min != null || r.max != null;
+  }
+  return true;
 }
 
 function FilterDot() {

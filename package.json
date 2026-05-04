@@ -1,6 +1,6 @@
 {
   "name": "airgrid",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Airtable-style data grid for React — TanStack Table + Virtual, column filters, sort, hide, reorder, inline edit, view persistence.",
   "license": "MIT",
   "author": "pshqkr",

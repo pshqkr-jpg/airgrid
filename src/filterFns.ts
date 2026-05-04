@@ -11,10 +11,13 @@ import type { FilterFn } from "@tanstack/react-table";
 // 모든 컬럼 row 타입에 호환되도록 any. row.getValue() 만 사용해 row 형태에
 // 의존 ✗ — runtime 안전.
 export const textFilter: FilterFn<any> = (row, columnId, filterValue) => {
-  if (typeof filterValue !== "string" || filterValue === "") return true;
+  // 공백만 있는 값은 "필터 없음" 으로 — 사용자가 실수로 스페이스 한 번
+  // 누른 stale state 가 점 indicator 만 띄우는 일 방지.
+  if (typeof filterValue !== "string" || filterValue.trim() === "") return true;
+  const needle = filterValue.trim().toLowerCase();
   const v = row.getValue(columnId);
   if (v == null) return false;
-  return String(v).toLowerCase().includes(filterValue.toLowerCase());
+  return String(v).toLowerCase().includes(needle);
 };
 
 export const numberRangeFilter: FilterFn<any> = (row, columnId, filterValue) => {
