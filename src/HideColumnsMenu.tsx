@@ -109,7 +109,7 @@ export function HideColumnsMenu<TRow>({
           )}
           {defaultViewLocked && (
             <div style={lockedHintStyle}>
-              전체 view 에선 컬럼 숨김 ✗ — 변경하면 새 view 로 저장됩니다.
+              기본 보기에선 컬럼 숨김 ✗ — 변경하면 새 보기로 저장됩니다.
             </div>
           )}
         </div>
