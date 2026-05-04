@@ -23,6 +23,7 @@ import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
 import { HeaderFilterPopover } from "./HeaderFilterPopover";
 import { FilterChipBar } from "./FilterChipBar";
+import { SortPriorityPanel } from "./SortPriorityPanel";
 import { HideColumnsMenu } from "./HideColumnsMenu";
 import { EditableCell } from "./EditableCell";
 import { loadState, saveState } from "./persistence";
@@ -97,6 +98,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     columnId: string;
     anchor: { x: number; y: number };
   } | null>(null);
+  // 정렬 우선순위 패널 — 컨트롤바 "정렬" 버튼 클릭으로.
+  const [sortPanelAnchor, setSortPanelAnchor] = useState<{ x: number; y: number } | null>(null);
 
   // state 변경 시 localStorage 동기화.
   useEffect(() => {
@@ -181,7 +184,25 @@ export function DataGrid<TRow extends Record<string, unknown>>(
             헤더 우클릭으로 필터·정렬
           </span>
         </span>
-        <HideColumnsMenu table={table} />
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            onClick={(e) => setSortPanelAnchor({ x: e.clientX - 240, y: e.clientY + 8 })}
+            style={{
+              fontSize: 11,
+              padding: "3px 8px",
+              border: "1px solid var(--airgrid-border, #e5e7eb)",
+              background: sorting.length > 0 ? "var(--airgrid-active-bg, #eef2ff)" : "var(--airgrid-bg, #ffffff)",
+              color: sorting.length > 0 ? "var(--airgrid-active-fg, #4338ca)" : "var(--airgrid-header-fg, #6b7280)",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+            title="정렬 우선순위 (다중 정렬)"
+          >
+            ⇅ 정렬{sorting.length > 0 ? ` (${sorting.length})` : ""}
+          </button>
+          <HideColumnsMenu table={table} />
+        </div>
       </div>
 
       <div
@@ -263,6 +284,13 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           onClose={closePopover}
           defaultViewLocked={defaultViewLocked}
           onHideRequest={onHideRequestOnDefault}
+        />
+      )}
+      {sortPanelAnchor && (
+        <SortPriorityPanel
+          table={table}
+          anchor={sortPanelAnchor}
+          onClose={() => setSortPanelAnchor(null)}
         />
       )}
     </div>
