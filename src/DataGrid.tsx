@@ -18,7 +18,7 @@ import {
   type CellContext,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { ColumnDef, AirgridMeta } from "./types";
+import type { ColumnDef, AirgridMeta, ViewState } from "./types";
 import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
 import { HeaderFilterPopover } from "./HeaderFilterPopover";
@@ -64,6 +64,14 @@ export type DataGridProps<TRow> = {
   onHideRequestOnDefault?: (columnId: string) => void;
   /** 위 콜백을 활성화할지. true 면 컬럼 hide 시도 = onHideRequestOnDefault 호출. */
   defaultViewLocked?: boolean;
+  /**
+   * Controlled view state. 정의되면 internal state 대신 이 값 사용.
+   * 호스트 앱이 view 시스템 (서버 저장 등) 통합 시.
+   * filterPersistKey 와 동시 사용 ✗ — viewState 가 우선.
+   */
+  viewState?: ViewState;
+  /** view state 변경 시 호출. 호스트가 view 영속화. */
+  onViewStateChange?: (next: ViewState) => void;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -75,23 +83,50 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     className, emptyText,
     onCellEdit, filterPersistKey,
     onHideRequestOnDefault, defaultViewLocked,
+    viewState, onViewStateChange,
   } = props;
 
-  // localStorage 복원 — 첫 마운트만.
+  const isControlled = viewState !== undefined;
+
+  // localStorage 복원 — viewState 미사용 (uncontrolled) + filterPersistKey 정의 시.
   const restored = useMemo(
-    () => (filterPersistKey ? loadState(filterPersistKey) : null),
-    [filterPersistKey],
+    () => (!isControlled && filterPersistKey ? loadState(filterPersistKey) : null),
+    [isControlled, filterPersistKey],
   );
 
-  const [sorting, setSorting] = useState<SortingState>(restored?.sorting ?? []);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+  const [internalSorting, setInternalSorting] = useState<SortingState>(restored?.sorting ?? []);
+  const [internalFilters, setInternalFilters] = useState<ColumnFiltersState>(
     restored?.columnFilters ?? [],
   );
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+  const [internalVisibility, setInternalVisibility] = useState<VisibilityState>(
     restored?.columnVisibility ?? Object.fromEntries(
       columns.filter((c) => c.defaultVisible === false).map((c) => [c.id, false]),
     ),
   );
+
+  // controlled 일 땐 viewState 우선, 아니면 internal.
+  const sorting = isControlled ? viewState.sorting : internalSorting;
+  const columnFilters = isControlled ? viewState.columnFilters : internalFilters;
+  const columnVisibility = isControlled ? viewState.columnVisibility : internalVisibility;
+
+  // 변경 핸들러 — controlled 면 onViewStateChange, 아니면 internal state.
+  // TanStack Table 의 OnChangeFn<T> 는 (updater: T | ((prev: T) => T)) => void 시그니처라
+  // value 와 함수 둘 다 처리.
+  const setSorting = (next: SortingState | ((prev: SortingState) => SortingState)) => {
+    const value = typeof next === "function" ? next(sorting) : next;
+    if (isControlled) onViewStateChange?.({ ...viewState!, sorting: value });
+    else setInternalSorting(value);
+  };
+  const setColumnFilters = (next: ColumnFiltersState | ((prev: ColumnFiltersState) => ColumnFiltersState)) => {
+    const value = typeof next === "function" ? next(columnFilters) : next;
+    if (isControlled) onViewStateChange?.({ ...viewState!, columnFilters: value });
+    else setInternalFilters(value);
+  };
+  const setColumnVisibility = (next: VisibilityState | ((prev: VisibilityState) => VisibilityState)) => {
+    const value = typeof next === "function" ? next(columnVisibility) : next;
+    if (isControlled) onViewStateChange?.({ ...viewState!, columnVisibility: value });
+    else setInternalVisibility(value);
+  };
 
   // popover state — 우클릭으로 띄우는 헤더 menu.
   const [popoverState, setPopoverState] = useState<{
@@ -101,11 +136,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   // 정렬 우선순위 패널 — 컨트롤바 "정렬" 버튼 클릭으로.
   const [sortPanelAnchor, setSortPanelAnchor] = useState<{ x: number; y: number } | null>(null);
 
-  // state 변경 시 localStorage 동기화.
+  // state 변경 시 localStorage 동기화 — controlled 일 땐 호스트가 영속화하므로 skip.
   useEffect(() => {
-    if (!filterPersistKey) return;
+    if (isControlled || !filterPersistKey) return;
     saveState(filterPersistKey, { sorting, columnFilters, columnVisibility });
-  }, [filterPersistKey, sorting, columnFilters, columnVisibility]);
+  }, [isControlled, filterPersistKey, sorting, columnFilters, columnVisibility]);
 
   const tableColumns = useMemo<TSColumnDef<TRow>[]>(
     () => columns.map((c) => {
@@ -201,7 +236,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           >
             ⇅ 정렬{sorting.length > 0 ? ` (${sorting.length})` : ""}
           </button>
-          <HideColumnsMenu table={table} />
+          <HideColumnsMenu
+            table={table}
+            defaultViewLocked={defaultViewLocked}
+            onHideRequest={onHideRequestOnDefault}
+          />
         </div>
       </div>
 

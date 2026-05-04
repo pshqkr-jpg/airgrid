@@ -1,13 +1,23 @@
 // 컬럼 숨김 / 표시 토글 메뉴 — 우측 상단 작은 버튼 → popover.
+//
+// defaultViewLocked 면 visibility 변경 시 onHideRequest 콜백 호출 — 호스트가
+// fork 흐름 ("새 view 로 저장하시겠어요?") 처리. 그 사이엔 visibility 변경 ✗.
 
 import { useState, useRef, useEffect } from "react";
 import type { Table } from "@tanstack/react-table";
 
-export function HideColumnsMenu<TRow>({ table }: { table: Table<TRow> }) {
+export type HideColumnsMenuProps<TRow> = {
+  table: Table<TRow>;
+  defaultViewLocked?: boolean;
+  onHideRequest?: (columnId: string) => void;
+};
+
+export function HideColumnsMenu<TRow>({
+  table, defaultViewLocked, onHideRequest,
+}: HideColumnsMenuProps<TRow>) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // 외부 클릭 시 닫기.
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -40,18 +50,32 @@ export function HideColumnsMenu<TRow>({ table }: { table: Table<TRow> }) {
               <input
                 type="checkbox"
                 checked={column.getIsVisible()}
-                onChange={column.getToggleVisibilityHandler()}
+                onChange={() => {
+                  if (defaultViewLocked && onHideRequest) {
+                    onHideRequest(column.id);
+                    setOpen(false);
+                    return;
+                  }
+                  column.toggleVisibility();
+                }}
               />
               <span>{String(column.columnDef.header)}</span>
             </label>
           ))}
-          <button
-            type="button"
-            onClick={() => table.resetColumnVisibility()}
-            style={popoverResetStyle}
-          >
-            모두 표시
-          </button>
+          {!defaultViewLocked && (
+            <button
+              type="button"
+              onClick={() => table.resetColumnVisibility()}
+              style={popoverResetStyle}
+            >
+              모두 표시
+            </button>
+          )}
+          {defaultViewLocked && (
+            <div style={{ ...popoverHeaderStyle, padding: "4px 8px", fontSize: 9, textTransform: "none", color: "var(--airgrid-empty-fg, #9ca3af)" }}>
+              전체 view 에선 컬럼 숨김 ✗ — 변경하면 새 view 로 저장됩니다.
+            </div>
+          )}
         </div>
       )}
     </div>
