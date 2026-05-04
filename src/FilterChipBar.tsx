@@ -1,8 +1,10 @@
-// 그리드 상단 활성 필터 / 정렬 chip 표시.
+// 그리드 상단 활성 필터 chip 표시.
 //
 // 클릭 시 해당 컬럼의 popover 재오픈, X 시 즉시 제거. 비어있을 땐 안 보임.
+// 정렬은 controls bar 의 "정렬 (n)" 버튼 + SortPriorityPanel 에서만 — chip ✗
+// (Airtable UX: 정렬은 한 곳에서만 노출).
 
-import type { Table, ColumnFiltersState, SortingState } from "@tanstack/react-table";
+import type { Table, ColumnFiltersState } from "@tanstack/react-table";
 import type { AirgridMeta } from "./types";
 
 export type FilterChipBarProps<TRow> = {
@@ -13,9 +15,8 @@ export type FilterChipBarProps<TRow> = {
 
 export function FilterChipBar<TRow>({ table, onChipClick }: FilterChipBarProps<TRow>) {
   const filters: ColumnFiltersState = table.getState().columnFilters;
-  const sorting: SortingState = table.getState().sorting;
 
-  if (filters.length === 0 && sorting.length === 0) return null;
+  if (filters.length === 0) return null;
 
   return (
     <div
@@ -38,23 +39,9 @@ export function FilterChipBar<TRow>({ table, onChipClick }: FilterChipBarProps<T
         return (
           <Chip
             key={`f-${f.id}`}
-            kind="filter"
             label={`${headerText(col.columnDef.header)} ${formatFilterValue(meta?.filterType, f.value)}`}
             onClick={(e) => onChipClick?.(f.id, { x: e.clientX, y: e.clientY })}
             onClear={() => col.setFilterValue(undefined)}
-          />
-        );
-      })}
-      {sorting.map((s, idx) => {
-        const col = table.getColumn(s.id);
-        if (!col) return null;
-        return (
-          <Chip
-            key={`s-${s.id}`}
-            kind="sort"
-            label={`${idx + 1}. ${headerText(col.columnDef.header)} ${s.desc ? "↓" : "↑"}`}
-            onClick={(e) => onChipClick?.(s.id, { x: e.clientX, y: e.clientY })}
-            onClear={() => col.clearSorting()}
           />
         );
       })}
@@ -63,15 +50,14 @@ export function FilterChipBar<TRow>({ table, onChipClick }: FilterChipBarProps<T
 }
 
 function Chip({
-  kind, label, onClick, onClear,
+  label, onClick, onClear,
 }: {
-  kind: "filter" | "sort";
   label: string;
   onClick: (e: React.MouseEvent) => void;
   onClear: () => void;
 }) {
-  const bg = kind === "filter" ? "var(--airgrid-chip-filter-bg, #e0e7ff)" : "var(--airgrid-chip-sort-bg, #d1fae5)";
-  const fg = kind === "filter" ? "var(--airgrid-chip-filter-fg, #4338ca)" : "var(--airgrid-chip-sort-fg, #047857)";
+  const bg = "var(--airgrid-chip-filter-bg, #e0e7ff)";
+  const fg = "var(--airgrid-chip-filter-fg, #4338ca)";
   return (
     <span
       onClick={onClick}

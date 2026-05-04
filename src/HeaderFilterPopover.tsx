@@ -273,6 +273,8 @@ const popoverButtonStyle: React.CSSProperties = {
   border: "1px solid var(--airgrid-border, #e5e7eb)",
   borderRadius: 4,
   background: "transparent",
+  // 호스트 CSS 가 button color 를 흰색으로 둔 경우 텍스트 안 보이는 버그 (#컬럼-숨기기-빈칸).
+  color: "var(--airgrid-fg, #1f2937)",
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
