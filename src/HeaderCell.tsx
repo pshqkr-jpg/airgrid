@@ -1,10 +1,13 @@
-// 헤더 셀 — 좌클릭 정렬, 우클릭 popover.
+// 헤더 셀 — 좌클릭 정렬, 우클릭 popover, 드래그 핸들로 컬럼 reorder.
 //
 // 항상 보이는 input row 는 제거 (Phase A1). 필터 input 은 popover 안에서만.
 // 활성 필터 / 정렬 indicator 가 헤더에 작은 마커로 표시.
+// 컬럼 reorder 는 핸들(⋮⋮) 영역 드래그로만 — sort 클릭과 충돌 방지 (Phase A4).
 
 import type { Header } from "@tanstack/react-table";
 import { flexRender } from "@tanstack/react-table";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { AirgridMeta } from "./types";
 
 export type HeaderCellProps<TRow> = {
@@ -22,14 +25,30 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
   const hasFilter = header.column.getFilterValue() != null
     && header.column.getFilterValue() !== "";
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: header.column.id });
+
+  const wrapperStyle: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 3 : "auto",
+    borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)",
+    background: isDragging ? "var(--airgrid-header-bg, #f9fafb)" : "transparent",
+    display: "flex",
+    alignItems: "center",
+    minWidth: 0,
+  };
+
   return (
     <div
+      ref={setNodeRef}
       role="columnheader"
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu?.(header.column.id, { x: e.clientX, y: e.clientY });
       }}
-      style={{ borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)" }}
+      style={wrapperStyle}
     >
       <button
         type="button"
@@ -41,7 +60,7 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
         disabled={!canSort}
         style={{
           textAlign: align,
-          padding: "6px 10px",
+          padding: "6px 4px 6px 10px",
           fontWeight: 600,
           fontSize: 11,
           textTransform: "uppercase",
@@ -54,16 +73,51 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
           alignItems: "center",
           justifyContent: align === "right" ? "flex-end" : "flex-start",
           gap: 4,
-          width: "100%",
+          flex: 1,
+          minWidth: 0,
         }}
         title="좌클릭: 정렬 / 우클릭: 필터·정렬·숨기기 메뉴"
       >
-        <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {flexRender(header.column.columnDef.header, header.getContext())}
+        </span>
         {sort === "asc" && <SortBadge index={sortIndex} dir="asc" />}
         {sort === "desc" && <SortBadge index={sortIndex} dir="desc" />}
         {hasFilter && <FilterDot />}
       </button>
+      <DragHandle attributes={attributes} listeners={listeners} />
     </div>
+  );
+}
+
+function DragHandle({
+  attributes,
+  listeners,
+}: {
+  attributes: ReturnType<typeof useSortable>["attributes"];
+  listeners: ReturnType<typeof useSortable>["listeners"];
+}) {
+  return (
+    <span
+      {...attributes}
+      {...listeners}
+      role="button"
+      aria-label="컬럼 순서 변경"
+      title="드래그하여 컬럼 순서 변경"
+      style={{
+        cursor: "grab",
+        padding: "0 4px",
+        color: "var(--airgrid-empty-fg, #9ca3af)",
+        fontSize: 12,
+        lineHeight: 1,
+        userSelect: "none",
+        touchAction: "none",
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+    >
+      ⋮⋮
+    </span>
   );
 }
 

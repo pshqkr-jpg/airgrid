@@ -15,9 +15,26 @@ import {
   type SortingState,
   type ColumnFiltersState,
   type VisibilityState,
+  type ColumnOrderState,
   type CellContext,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import type { ColumnDef, AirgridMeta, ViewState } from "./types";
 import { pickFilterFn } from "./filterFns";
 import { HeaderCell } from "./HeaderCell";
@@ -103,11 +120,17 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       columns.filter((c) => c.defaultVisible === false).map((c) => [c.id, false]),
     ),
   );
+  const [internalColumnOrder, setInternalColumnOrder] = useState<ColumnOrderState>(
+    restored?.columnOrder ?? [],
+  );
 
   // controlled 일 땐 viewState 우선, 아니면 internal.
   const sorting = isControlled ? viewState.sorting : internalSorting;
   const columnFilters = isControlled ? viewState.columnFilters : internalFilters;
   const columnVisibility = isControlled ? viewState.columnVisibility : internalVisibility;
+  const columnOrder = isControlled
+    ? (viewState.columnOrder ?? [])
+    : internalColumnOrder;
 
   // 변경 핸들러 — controlled 면 onViewStateChange, 아니면 internal state.
   // TanStack Table 의 OnChangeFn<T> 는 (updater: T | ((prev: T) => T)) => void 시그니처라
@@ -127,6 +150,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     if (isControlled) onViewStateChange?.({ ...viewState!, columnVisibility: value });
     else setInternalVisibility(value);
   };
+  const setColumnOrder = (next: ColumnOrderState | ((prev: ColumnOrderState) => ColumnOrderState)) => {
+    const value = typeof next === "function" ? next(columnOrder) : next;
+    if (isControlled) onViewStateChange?.({ ...viewState!, columnOrder: value });
+    else setInternalColumnOrder(value);
+  };
 
   // popover state — 우클릭으로 띄우는 헤더 menu.
   const [popoverState, setPopoverState] = useState<{
@@ -139,8 +167,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   // state 변경 시 localStorage 동기화 — controlled 일 땐 호스트가 영속화하므로 skip.
   useEffect(() => {
     if (isControlled || !filterPersistKey) return;
-    saveState(filterPersistKey, { sorting, columnFilters, columnVisibility });
-  }, [isControlled, filterPersistKey, sorting, columnFilters, columnVisibility]);
+    saveState(filterPersistKey, { sorting, columnFilters, columnVisibility, columnOrder });
+  }, [isControlled, filterPersistKey, sorting, columnFilters, columnVisibility, columnOrder]);
 
   const tableColumns = useMemo<TSColumnDef<TRow>[]>(
     () => columns.map((c) => {
@@ -169,10 +197,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const table = useReactTable({
     data,
     columns: tableColumns,
-    state: { sorting, columnFilters, columnVisibility },
+    state: { sorting, columnFilters, columnVisibility, columnOrder },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     getRowId: (row) => String(row[rowKey]),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -180,6 +209,27 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     enableMultiSort: true,
     isMultiSortEvent: (e) => (e as React.MouseEvent).shiftKey,
   });
+
+  // dnd-kit sensors — mouse 4px 임계값으로 클릭(정렬)과 드래그 분리.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // 드래그 종료 → arrayMove 로 columnOrder 재계산. 빈 배열에서 시작하면
+  // 현재 leaf column 순서를 baseline 으로 한 번 시드.
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const baseline = columnOrder.length > 0
+      ? columnOrder
+      : table.getAllLeafColumns().map((c) => c.id);
+    const oldIndex = baseline.indexOf(String(active.id));
+    const newIndex = baseline.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    setColumnOrder(arrayMove(baseline, oldIndex, newIndex));
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const rows = table.getRowModel().rows;
@@ -249,18 +299,29 @@ export function DataGrid<TRow extends Record<string, unknown>>(
         style={{ ...containerStyle, height }}
         role="grid"
       >
-        <div
-          style={{
-            ...headerRowStyle,
-            gridTemplateColumns,
-            minHeight: headerHeight,
-          }}
-          role="row"
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          {table.getHeaderGroups()[0]?.headers.map((h) => (
-            <HeaderCell key={h.id} header={h} onContextMenu={openPopover} />
-          ))}
-        </div>
+          <SortableContext
+            items={visibleColumns.map((c) => c.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div
+              style={{
+                ...headerRowStyle,
+                gridTemplateColumns,
+                minHeight: headerHeight,
+              }}
+              role="row"
+            >
+              {table.getHeaderGroups()[0]?.headers.map((h) => (
+                <HeaderCell key={h.id} header={h} onContextMenu={openPopover} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         {rows.length === 0 ? (
           <div style={emptyRowStyle}>

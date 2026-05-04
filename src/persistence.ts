@@ -7,12 +7,14 @@ import type {
   SortingState,
   ColumnFiltersState,
   VisibilityState,
+  ColumnOrderState,
 } from "@tanstack/react-table";
 
 export type PersistedState = {
   sorting: SortingState;
   columnFilters: ColumnFiltersState;
   columnVisibility: VisibilityState;
+  columnOrder: ColumnOrderState;
 };
 
 const PREFIX = "airgrid:";
@@ -27,6 +29,7 @@ export function loadState(key: string): PersistedState | null {
       sorting: parsed.sorting ?? [],
       columnFilters: parsed.columnFilters ?? [],
       columnVisibility: parsed.columnVisibility ?? {},
+      columnOrder: parsed.columnOrder ?? [],
     };
   } catch {
     return null;

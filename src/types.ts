@@ -38,14 +38,13 @@ export type AirgridMeta = {
   selectOptions?: string[];
 };
 
-// ─── View 시스템 (Phase A3) ──────────────────────────────────────
+// ─── View 시스템 (Phase A3 + A4) ─────────────────────────────────
 //
-// ViewState — DataGrid 의 사용자 설정 (정렬 / 필터 / 보이는 컬럼). 호스트
-// 앱이 영속화 (서버 또는 localStorage) 한 후 DataGrid 에 주입.
+// ViewState — DataGrid 의 사용자 설정 (정렬 / 필터 / 보이는 컬럼 /
+// 컬럼 순서). 호스트 앱이 영속화 (서버 또는 localStorage) 한 후 DataGrid 에
+// 주입.
 //
-// columnOrder / columnSizing 은 schema 만 미리 — Phase A3 시점에선 라이브
-// 러리 미지원. 다음 라이브러리 업데이트 때 활성화. 호스트가 미리 저장
-// 시작해도 forward-compat.
+// columnSizing 은 schema 만 미리 — 다음 라이브러리 업데이트 때 활성화.
 
 import type {
   SortingState,
@@ -57,7 +56,7 @@ export type ViewState = {
   sorting: SortingState;
   columnFilters: ColumnFiltersState;
   columnVisibility: VisibilityState;
-  /** 컬럼 순서 — 라이브러리 다음 update 에서 활성화. */
+  /** 컬럼 순서. 빈 배열이면 ColumnDef 정의 순서 사용. */
   columnOrder?: string[];
   /** 컬럼 폭 (px) — 라이브러리 다음 update 에서 활성화. */
   columnSizing?: Record<string, number>;
@@ -67,4 +66,5 @@ export const EMPTY_VIEW_STATE: ViewState = {
   sorting: [],
   columnFilters: [],
   columnVisibility: {},
+  columnOrder: [],
 };
