@@ -291,11 +291,15 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const containerRef = useRef<HTMLDivElement>(null);
   const rows = table.getRowModel().rows;
 
+  // 가변 행 높이 — measureElement 가 실제 DOM 높이 측정. 셀 안에서 줄바꿈
+  // (e.g. 다중 라인 상품 목록) 하면 자동으로 행이 늘어남. 단일 라인 행은
+  // estimateSize 그대로.
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => estimatedRowHeight,
     overscan: 10,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? estimatedRowHeight,
   });
 
   const visibleColumns = table.getVisibleLeafColumns();
@@ -401,15 +405,18 @@ export function DataGrid<TRow extends Record<string, unknown>>(
               return (
                 <div
                   key={row.id}
+                  ref={virtualizer.measureElement}
+                  data-index={vRow.index}
                   role="row"
                   onClick={onRowClick ? () => handleRowClick(row.original) : undefined}
                   onDoubleClick={onRowClick ? handleRowDoubleClick : undefined}
                   style={{
+                    // height 명시 ✗ — 자연 높이를 measureElement 가 실측.
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
-                    height: vRow.size,
+                    minHeight: estimatedRowHeight,
                     transform: `translateY(${vRow.start}px)`,
                     display: "grid",
                     gridTemplateColumns,
