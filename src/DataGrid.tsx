@@ -381,9 +381,18 @@ export function DataGrid<TRow extends Record<string, unknown>>(
               }}
               role="row"
             >
-              {table.getHeaderGroups()[0]?.headers.map((h) => (
-                <HeaderCell key={h.id} header={h} onContextMenu={openPopover} />
-              ))}
+              {(() => {
+                const headers = table.getHeaderGroups()[0]?.headers ?? [];
+                const lastIdx = headers.length - 1;
+                return headers.map((h, i) => (
+                  <HeaderCell
+                    key={h.id}
+                    header={h}
+                    onContextMenu={openPopover}
+                    isLast={i === lastIdx}
+                  />
+                ));
+              })()}
             </div>
           </SortableContext>
         </DndContext>
