@@ -107,6 +107,18 @@ export type DataGridProps<TRow> = {
   isLoadingMore?: boolean;
   /** 마지막 N 행 안쪽에 viewport 가 들어가면 onLoadMore 트리거. 기본 10. */
   loadMoreThreshold?: number;
+  /**
+   * 정렬을 서버에 위임. true 면 client-side row 정렬 비활성 — sorting state 는
+   * 그대로 노출되지만 행 순서는 data prop 그대로 사용. 호스트가 sorting 변화
+   * 감지 → query string 으로 서버 재요청 + 첫 페이지부터 다시 받기.
+   * 무한 스크롤과 함께 쓸 때 필수 — 페이지마다 정렬 어긋남 방지.
+   */
+  manualSorting?: boolean;
+  /**
+   * 필터를 서버에 위임. true 면 client-side row 필터 비활성. 무한 스크롤 +
+   * 필터 정확성 보장이 필요할 때.
+   */
+  manualFiltering?: boolean;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -121,6 +133,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     viewState, onViewStateChange,
     onRowClick,
     onLoadMore, hasMore, isLoadingMore, loadMoreThreshold = 10,
+    manualSorting, manualFiltering,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -236,8 +249,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     onColumnSizingChange: setColumnSizing,
     getRowId: (row) => String(row[rowKey]),
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    // manual* 일 땐 row model 단계 건너뛰어 호스트(서버) 가 보낸 순서·집합 유지.
+    getFilteredRowModel: manualFiltering ? undefined : getFilteredRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+    manualSorting: !!manualSorting,
+    manualFiltering: !!manualFiltering,
     enableMultiSort: true,
     isMultiSortEvent: (e) => (e as React.MouseEvent).shiftKey,
     enableColumnResizing: true,
