@@ -4,6 +4,7 @@
 // 활성 필터 / 정렬 indicator 가 헤더에 작은 마커로 표시.
 // 컬럼 reorder 는 핸들(⋮⋮) 영역 드래그로만 — sort 클릭과 충돌 방지 (Phase A4).
 
+import { useState } from "react";
 import type { Header } from "@tanstack/react-table";
 import { flexRender } from "@tanstack/react-table";
 import { useSortable } from "@dnd-kit/sortable";
@@ -37,6 +38,7 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
     display: "flex",
     alignItems: "center",
     minWidth: 0,
+    position: "relative", // ResizeHandle 의 absolute 기준점.
   };
 
   return (
@@ -90,15 +92,18 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
   );
 }
 
-// 헤더 우측 폭 조절 핸들. 컬럼 경계에 얹혀 좌우 드래그.
-// - mousedown 에서 stopPropagation: dnd-kit sortable / 행 클릭 트리거 차단
-// - touchAction: none: 모바일 스크롤과 충돌 방지
+// 헤더 우측 폭 조절 핸들. wrapper 우측 가장자리에 absolute 로 8px 띠 배치 +
+// 양옆으로 4px 씩 살짝 튀어나오게 해 다음 셀 영역과 겹쳐도 잡히게.
+// - mousedown 에서 stopPropagation + preventDefault: dnd-kit sortable 활성화 차단
+// - hover 시 보이는 줄, isResizing 시 진하게 — 사용자가 핸들 위치를 인지 가능
 function ResizeHandle<TRow>({ header }: { header: Header<TRow, unknown> }) {
   const isResizing = header.column.getIsResizing();
+  const [hover, setHover] = useState(false);
   return (
     <span
       onMouseDown={(e) => {
         e.stopPropagation();
+        e.preventDefault();
         header.getResizeHandler()(e);
       }}
       onTouchStart={(e) => {
@@ -107,21 +112,28 @@ function ResizeHandle<TRow>({ header }: { header: Header<TRow, unknown> }) {
       }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       role="separator"
       aria-orientation="vertical"
       aria-label="컬럼 폭 조절"
       title="드래그하여 컬럼 폭 조절"
       style={{
-        width: 6,
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        right: -4,
+        width: 8,
         cursor: "col-resize",
         userSelect: "none",
         touchAction: "none",
-        alignSelf: "stretch",
-        background: isResizing ? "var(--airgrid-resize-active, #4f46e5)" : "transparent",
-        opacity: isResizing ? 1 : 0.6,
-        marginRight: -3,
-        position: "relative",
-        zIndex: 1,
+        zIndex: 4,
+        // 가운데 1px 줄 — hover/resizing 시 보이게.
+        background: isResizing
+          ? "linear-gradient(to right, transparent 3px, var(--airgrid-resize-active, #4f46e5) 3px, var(--airgrid-resize-active, #4f46e5) 5px, transparent 5px)"
+          : hover
+          ? "linear-gradient(to right, transparent 3px, var(--airgrid-resize-hover, #9ca3af) 3px, var(--airgrid-resize-hover, #9ca3af) 5px, transparent 5px)"
+          : "transparent",
       }}
     />
   );
