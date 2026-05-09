@@ -380,15 +380,10 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       <div style={controlsBarStyle}>
         <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
           {(() => {
-            // totalCount 정의 시 — 서버가 보낸 전체 행 수를 우선. 클라가 가진
-            // data 는 페이지 단위 부분일 수 있음.
+            // totalCount 정의 시 — 무한 스크롤 부분 로드 여부 숨기고 전체만.
+            // 셀러는 200개 단위 페이지네이션을 알 필요 없음.
             if (typeof totalCount === "number") {
-              if (rows.length !== data.length) {
-                return `${rows.length}/${data.length}행 표시 · 전체 ${totalCount}행`;
-              }
-              return data.length < totalCount
-                ? `${data.length}/${totalCount}행 로드`
-                : `${totalCount}행`;
+              return `${totalCount}행`;
             }
             return rows.length === data.length
               ? `${data.length}행`
