@@ -278,12 +278,20 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   // 현재 leaf column 순서를 baseline 으로 한 번 시드.
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    // 디버깅 — 마지막 컬럼 reorder 안 되는 이슈 진단용. 결과 보고 후 제거.
+    // eslint-disable-next-line no-console
+    console.log("[airgrid dnd]", {
+      active: active?.id, over: over?.id, columnOrder,
+      visibleIds: table.getVisibleLeafColumns().map((c) => c.id),
+    });
     if (!over || active.id === over.id) return;
     const baseline = columnOrder.length > 0
       ? columnOrder
       : table.getAllLeafColumns().map((c) => c.id);
     const oldIndex = baseline.indexOf(String(active.id));
     const newIndex = baseline.indexOf(String(over.id));
+    // eslint-disable-next-line no-console
+    console.log("[airgrid dnd] indices", { baseline, oldIndex, newIndex });
     if (oldIndex < 0 || newIndex < 0) return;
     setColumnOrder(arrayMove(baseline, oldIndex, newIndex));
   };
