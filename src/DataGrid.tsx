@@ -94,6 +94,19 @@ export type DataGridProps<TRow> = {
    * 등은 본인 onClick 에서 e.stopPropagation() 해야 행 클릭 안 트리거.
    */
   onRowClick?: (row: TRow) => void;
+  /**
+   * 무한 스크롤 — viewport 가 마지막 행에서 loadMoreThreshold 안쪽에
+   * 들어가면 호출. 호스트가 다음 페이지 fetch 후 data 에 append.
+   * isLoadingMore 가 true 인 동안엔 추가 호출 ✗ (디바운스).
+   * hasMore 가 false 면 더 이상 호출 ✗.
+   */
+  onLoadMore?: () => void;
+  /** 다음 페이지가 더 있는지. false 면 onLoadMore 호출 안 됨. */
+  hasMore?: boolean;
+  /** 현재 추가 페이지 fetch 중인지. true 면 onLoadMore 추가 호출 ✗. */
+  isLoadingMore?: boolean;
+  /** 마지막 N 행 안쪽에 viewport 가 들어가면 onLoadMore 트리거. 기본 10. */
+  loadMoreThreshold?: number;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -107,6 +120,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     onHideRequestOnDefault, defaultViewLocked,
     viewState, onViewStateChange,
     onRowClick,
+    onLoadMore, hasMore, isLoadingMore, loadMoreThreshold = 10,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -307,6 +321,18 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     measureElement: (el) => el?.getBoundingClientRect().height ?? estimatedRowHeight,
   });
 
+  // 무한 스크롤 — virtual items 의 마지막 인덱스가 (rows.length - threshold)
+  // 이상이면 onLoadMore 호출. isLoadingMore / hasMore 로 중복·종료 처리.
+  const virtualItems = virtualizer.getVirtualItems();
+  useEffect(() => {
+    if (!onLoadMore || isLoadingMore || hasMore === false) return;
+    if (virtualItems.length === 0) return;
+    const lastVisibleIndex = virtualItems[virtualItems.length - 1].index;
+    if (lastVisibleIndex >= rows.length - loadMoreThreshold) {
+      onLoadMore();
+    }
+  }, [virtualItems, rows.length, onLoadMore, isLoadingMore, hasMore, loadMoreThreshold]);
+
   const visibleColumns = table.getVisibleLeafColumns();
   // 사용자가 드래그로 폭 조정한 컬럼은 columnSizing[id] (px) 우선,
   // 그 외엔 ColumnDef.width (CSS grid template), 둘 다 없으면 minmax fallback.
@@ -335,6 +361,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           {rows.length === data.length
             ? `${data.length}행`
             : `${rows.length}/${data.length}행 (필터됨)`}
+          {isLoadingMore && (
+            <span style={{ marginLeft: 8, color: "var(--airgrid-empty-fg, #9ca3af)" }}>
+              · 더 불러오는 중…
+            </span>
+          )}
           <span style={{ marginLeft: 8, color: "var(--airgrid-empty-fg, #9ca3af)" }}>
             헤더 우클릭으로 필터·정렬
           </span>
@@ -405,7 +436,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
               position: "relative",
             }}
           >
-            {virtualizer.getVirtualItems().map((vRow) => {
+            {virtualItems.map((vRow) => {
               const row = rows[vRow.index];
               return (
                 <div
