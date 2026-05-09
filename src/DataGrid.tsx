@@ -119,6 +119,11 @@ export type DataGridProps<TRow> = {
    * 필터 정확성 보장이 필요할 때.
    */
   manualFiltering?: boolean;
+  /**
+   * 서버 사이드 페이지네이션 시 전체 행 개수 — 컨트롤바 카운터에 표시.
+   * 미정의 시 클라가 가진 data.length 사용 (page 단위만 보유한 경우 불정확).
+   */
+  totalCount?: number;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -133,7 +138,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     viewState, onViewStateChange,
     onRowClick,
     onLoadMore, hasMore, isLoadingMore, loadMoreThreshold = 10,
-    manualSorting, manualFiltering,
+    manualSorting, manualFiltering, totalCount,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -374,9 +379,21 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     <div className={className}>
       <div style={controlsBarStyle}>
         <span style={{ fontSize: 11, color: "var(--airgrid-header-fg, #6b7280)" }}>
-          {rows.length === data.length
-            ? `${data.length}행`
-            : `${rows.length}/${data.length}행 (필터됨)`}
+          {(() => {
+            // totalCount 정의 시 — 서버가 보낸 전체 행 수를 우선. 클라가 가진
+            // data 는 페이지 단위 부분일 수 있음.
+            if (typeof totalCount === "number") {
+              if (rows.length !== data.length) {
+                return `${rows.length}/${data.length}행 표시 · 전체 ${totalCount}행`;
+              }
+              return data.length < totalCount
+                ? `${data.length}/${totalCount}행 로드`
+                : `${totalCount}행`;
+            }
+            return rows.length === data.length
+              ? `${data.length}행`
+              : `${rows.length}/${data.length}행 (필터됨)`;
+          })()}
           {isLoadingMore && (
             <span style={{ marginLeft: 8, color: "var(--airgrid-empty-fg, #9ca3af)" }}>
               · 더 불러오는 중…

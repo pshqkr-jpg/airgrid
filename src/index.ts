@@ -14,4 +14,4 @@ export type {
 export { EMPTY_VIEW_STATE } from "./types";
 export { clearState as clearPersistedState } from "./persistence";
 
-export const VERSION = "0.8.1";
+export const VERSION = "0.8.2";
