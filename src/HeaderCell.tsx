@@ -85,7 +85,45 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
         {hasFilter && <FilterDot />}
       </button>
       <DragHandle attributes={attributes} listeners={listeners} />
+      <ResizeHandle header={header} />
     </div>
+  );
+}
+
+// 헤더 우측 폭 조절 핸들. 컬럼 경계에 얹혀 좌우 드래그.
+// - mousedown 에서 stopPropagation: dnd-kit sortable / 행 클릭 트리거 차단
+// - touchAction: none: 모바일 스크롤과 충돌 방지
+function ResizeHandle<TRow>({ header }: { header: Header<TRow, unknown> }) {
+  const isResizing = header.column.getIsResizing();
+  return (
+    <span
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        header.getResizeHandler()(e);
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        header.getResizeHandler()(e);
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="컬럼 폭 조절"
+      title="드래그하여 컬럼 폭 조절"
+      style={{
+        width: 6,
+        cursor: "col-resize",
+        userSelect: "none",
+        touchAction: "none",
+        alignSelf: "stretch",
+        background: isResizing ? "var(--airgrid-resize-active, #4f46e5)" : "transparent",
+        opacity: isResizing ? 1 : 0.6,
+        marginRight: -3,
+        position: "relative",
+        zIndex: 1,
+      }}
+    />
   );
 }
 

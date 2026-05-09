@@ -8,6 +8,7 @@ import type {
   ColumnFiltersState,
   VisibilityState,
   ColumnOrderState,
+  ColumnSizingState,
 } from "@tanstack/react-table";
 
 export type PersistedState = {
@@ -15,6 +16,7 @@ export type PersistedState = {
   columnFilters: ColumnFiltersState;
   columnVisibility: VisibilityState;
   columnOrder: ColumnOrderState;
+  columnSizing: ColumnSizingState;
 };
 
 const PREFIX = "airgrid:";
@@ -30,6 +32,7 @@ export function loadState(key: string): PersistedState | null {
       columnFilters: parsed.columnFilters ?? [],
       columnVisibility: parsed.columnVisibility ?? {},
       columnOrder: parsed.columnOrder ?? [],
+      columnSizing: parsed.columnSizing ?? {},
     };
   } catch {
     return null;

@@ -16,6 +16,7 @@ import {
   type ColumnFiltersState,
   type VisibilityState,
   type ColumnOrderState,
+  type ColumnSizingState,
   type CellContext,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -128,6 +129,9 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const [internalColumnOrder, setInternalColumnOrder] = useState<ColumnOrderState>(
     restored?.columnOrder ?? [],
   );
+  const [internalColumnSizing, setInternalColumnSizing] = useState<ColumnSizingState>(
+    restored?.columnSizing ?? {},
+  );
 
   // controlled 일 땐 viewState 우선, 아니면 internal.
   const sorting = isControlled ? viewState.sorting : internalSorting;
@@ -136,6 +140,9 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const columnOrder = isControlled
     ? (viewState.columnOrder ?? [])
     : internalColumnOrder;
+  const columnSizing = isControlled
+    ? (viewState.columnSizing ?? {})
+    : internalColumnSizing;
 
   // 변경 핸들러 — controlled 면 onViewStateChange, 아니면 internal state.
   // TanStack Table 의 OnChangeFn<T> 는 (updater: T | ((prev: T) => T)) => void 시그니처라
@@ -160,6 +167,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     if (isControlled) onViewStateChange?.({ ...viewState!, columnOrder: value });
     else setInternalColumnOrder(value);
   };
+  const setColumnSizing = (next: ColumnSizingState | ((prev: ColumnSizingState) => ColumnSizingState)) => {
+    const value = typeof next === "function" ? next(columnSizing) : next;
+    if (isControlled) onViewStateChange?.({ ...viewState!, columnSizing: value });
+    else setInternalColumnSizing(value);
+  };
 
   // popover state — 우클릭으로 띄우는 헤더 menu.
   const [popoverState, setPopoverState] = useState<{
@@ -172,8 +184,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   // state 변경 시 localStorage 동기화 — controlled 일 땐 호스트가 영속화하므로 skip.
   useEffect(() => {
     if (isControlled || !filterPersistKey) return;
-    saveState(filterPersistKey, { sorting, columnFilters, columnVisibility, columnOrder });
-  }, [isControlled, filterPersistKey, sorting, columnFilters, columnVisibility, columnOrder]);
+    saveState(filterPersistKey, { sorting, columnFilters, columnVisibility, columnOrder, columnSizing });
+  }, [isControlled, filterPersistKey, sorting, columnFilters, columnVisibility, columnOrder, columnSizing]);
 
   const tableColumns = useMemo<TSColumnDef<TRow>[]>(
     () => columns.map((c) => {
@@ -202,17 +214,20 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const table = useReactTable({
     data,
     columns: tableColumns,
-    state: { sorting, columnFilters, columnVisibility, columnOrder },
+    state: { sorting, columnFilters, columnVisibility, columnOrder, columnSizing },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
+    onColumnSizingChange: setColumnSizing,
     getRowId: (row) => String(row[rowKey]),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableMultiSort: true,
     isMultiSortEvent: (e) => (e as React.MouseEvent).shiftKey,
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
   });
 
   // dnd-kit sensors — mouse 4px 임계값으로 클릭(정렬)과 드래그 분리.
@@ -284,11 +299,17 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   });
 
   const visibleColumns = table.getVisibleLeafColumns();
+  // 사용자가 드래그로 폭 조정한 컬럼은 columnSizing[id] (px) 우선,
+  // 그 외엔 ColumnDef.width (CSS grid template), 둘 다 없으면 minmax fallback.
   const gridTemplateColumns = useMemo(
     () => visibleColumns
-      .map((c) => (c.columnDef.meta as AirgridMeta | undefined)?.width ?? "minmax(80px, 1fr)")
+      .map((c) => {
+        const sized = columnSizing[c.id];
+        if (typeof sized === "number" && sized > 0) return `${sized}px`;
+        return (c.columnDef.meta as AirgridMeta | undefined)?.width ?? "minmax(80px, 1fr)";
+      })
       .join(" "),
-    [visibleColumns],
+    [visibleColumns, columnSizing],
   );
 
   // chip 클릭 또는 헤더 우클릭 → popover 좌표 set.

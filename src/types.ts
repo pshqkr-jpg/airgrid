@@ -41,10 +41,8 @@ export type AirgridMeta = {
 // ─── View 시스템 (Phase A3 + A4) ─────────────────────────────────
 //
 // ViewState — DataGrid 의 사용자 설정 (정렬 / 필터 / 보이는 컬럼 /
-// 컬럼 순서). 호스트 앱이 영속화 (서버 또는 localStorage) 한 후 DataGrid 에
-// 주입.
-//
-// columnSizing 은 schema 만 미리 — 다음 라이브러리 업데이트 때 활성화.
+// 컬럼 순서 / 컬럼 폭). 호스트 앱이 영속화 (서버 또는 localStorage) 한 후
+// DataGrid 에 주입.
 
 import type {
   SortingState,
@@ -58,7 +56,7 @@ export type ViewState = {
   columnVisibility: VisibilityState;
   /** 컬럼 순서. 빈 배열이면 ColumnDef 정의 순서 사용. */
   columnOrder?: string[];
-  /** 컬럼 폭 (px) — 라이브러리 다음 update 에서 활성화. */
+  /** 컬럼 폭 (px) — 사용자가 헤더 우측 핸들로 드래그한 값. 미설정 컬럼은 ColumnDef.width 사용. */
   columnSizing?: Record<string, number>;
 };
 
@@ -67,4 +65,5 @@ export const EMPTY_VIEW_STATE: ViewState = {
   columnFilters: [],
   columnVisibility: {},
   columnOrder: [],
+  columnSizing: {},
 };
