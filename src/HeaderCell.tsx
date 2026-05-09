@@ -15,12 +15,9 @@ export type HeaderCellProps<TRow> = {
   header: Header<TRow, unknown>;
   /** 우클릭 시 호출. 호출자 (DataGrid) 가 popover 띄우기. */
   onContextMenu?: (columnId: string, anchor: { x: number; y: number }) => void;
-  /** 마지막 visible 컬럼이면 true — ResizeHandle 비노출 (의미 ✗) +
-   *  drop target rect 가 컨테이너 우측 경계와 겹치는 dnd 이슈 회피. */
-  isLast?: boolean;
 };
 
-export function HeaderCell<TRow>({ header, onContextMenu, isLast }: HeaderCellProps<TRow>) {
+export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow>) {
   const meta = header.column.columnDef.meta as AirgridMeta | undefined;
   const align = meta?.align === "right" ? "right" : "left";
   const canSort = header.column.getCanSort();
@@ -90,7 +87,7 @@ export function HeaderCell<TRow>({ header, onContextMenu, isLast }: HeaderCellPr
         {hasFilter && <FilterDot />}
       </button>
       <DragHandle attributes={attributes} listeners={listeners} />
-      {!isLast && <ResizeHandle header={header} />}
+      <ResizeHandle header={header} />
     </div>
   );
 }
