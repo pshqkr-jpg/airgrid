@@ -155,9 +155,9 @@ function DragHandle({
       title="드래그하여 컬럼 순서 변경"
       style={{
         cursor: "grab",
-        padding: "0 4px",
+        padding: "0 1px",
         color: "var(--airgrid-empty-fg, #9ca3af)",
-        fontSize: 12,
+        fontSize: 9,
         lineHeight: 1,
         userSelect: "none",
         touchAction: "none",
