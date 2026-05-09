@@ -274,24 +274,21 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     }
   };
 
-  // 드래그 종료 → arrayMove 로 columnOrder 재계산. 빈 배열에서 시작하면
-  // 현재 leaf column 순서를 baseline 으로 한 번 시드.
+  // 드래그 종료 → arrayMove 로 columnOrder 재계산.
+  // baseline 합성 룰:
+  //   1) 호스트가 영속한 columnOrder 가 우선 — 사용자 reorder 결과 보존.
+  //   2) 그 후 추가된 컬럼 (예: 새 컬럼 정의가 코드에 들어왔는데 옛 columnOrder
+  //      에는 없는 경우) 은 끝에 자동 보충. 이 보충이 없으면 그 컬럼은
+  //      indexOf = -1 이 나와 reorder 자체가 안 됨.
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    // 디버깅 — 마지막 컬럼 reorder 안 되는 이슈 진단용. 결과 보고 후 제거.
-    // eslint-disable-next-line no-console
-    console.log("[airgrid dnd]", {
-      active: active?.id, over: over?.id, columnOrder,
-      visibleIds: table.getVisibleLeafColumns().map((c) => c.id),
-    });
     if (!over || active.id === over.id) return;
+    const allIds = table.getAllLeafColumns().map((c) => c.id);
     const baseline = columnOrder.length > 0
-      ? columnOrder
-      : table.getAllLeafColumns().map((c) => c.id);
+      ? [...columnOrder, ...allIds.filter((id) => !columnOrder.includes(id))]
+      : allIds;
     const oldIndex = baseline.indexOf(String(active.id));
     const newIndex = baseline.indexOf(String(over.id));
-    // eslint-disable-next-line no-console
-    console.log("[airgrid dnd] indices", { baseline, oldIndex, newIndex });
     if (oldIndex < 0 || newIndex < 0) return;
     setColumnOrder(arrayMove(baseline, oldIndex, newIndex));
   };
