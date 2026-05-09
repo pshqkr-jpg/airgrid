@@ -38,6 +38,33 @@ export type AirgridMeta = {
   selectOptions?: string[];
 };
 
+// ─── 필터 연산자 (Airtable 스타일) ─────────────────────────────────
+//
+// column.setFilterValue 에 들어가는 객체 형태. backward compat:
+//   - text:        문자열만 들어오면 op=contains 로 자동 매핑
+//   - numberRange: { min, max } 만 들어오면 op=between 으로 자동 매핑
+//   - select / boolean: 변경 없음 (그대로 배열 / boolean).
+
+export type TextFilterOp =
+  | "contains" | "notContains"
+  | "is" | "isNot"
+  | "startsWith" | "endsWith"
+  | "isEmpty" | "isNotEmpty";
+
+export type TextFilter = { op?: TextFilterOp; value?: string };
+
+export type NumberFilterOp =
+  | "between" | "eq" | "neq"
+  | "lt" | "gt" | "lte" | "gte"
+  | "isEmpty" | "isNotEmpty";
+
+export type NumberFilter = {
+  op?: NumberFilterOp;
+  value?: number;
+  min?: number;
+  max?: number;
+};
+
 // ─── View 시스템 (Phase A3 + A4) ─────────────────────────────────
 //
 // ViewState — DataGrid 의 사용자 설정 (정렬 / 필터 / 보이는 컬럼 /

@@ -2,7 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import type { Column } from "@tanstack/react-table";
-import type { AirgridMeta } from "./types";
+import type {
+  AirgridMeta,
+  TextFilter, TextFilterOp,
+  NumberFilter, NumberFilterOp,
+} from "./types";
+import { isTextFilterActive, isNumberFilterActive } from "./filterFns";
 
 export type HeaderFilterPopoverProps<TRow> = {
   column: Column<TRow, unknown>;
@@ -99,7 +104,7 @@ export function HeaderFilterPopover<TRow>({
             value={column.getFilterValue()}
             onChange={(v) => column.setFilterValue(v)}
           />
-          {column.getFilterValue() != null && column.getFilterValue() !== "" && (
+          {isAnyFilterActive(filterType, column.getFilterValue()) && (
             <button
               type="button"
               onClick={() => { column.setFilterValue(undefined); }}
@@ -134,6 +139,30 @@ export function HeaderFilterPopover<TRow>({
   );
 }
 
+// Airtable 스타일 연산자 목록.
+const TEXT_OPS: { value: TextFilterOp; label: string }[] = [
+  { value: "contains",    label: "포함" },
+  { value: "notContains", label: "미포함" },
+  { value: "is",          label: "일치" },
+  { value: "isNot",       label: "불일치" },
+  { value: "startsWith",  label: "~로 시작" },
+  { value: "endsWith",    label: "~로 끝남" },
+  { value: "isEmpty",     label: "비어있음" },
+  { value: "isNotEmpty",  label: "값 있음" },
+];
+
+const NUM_OPS: { value: NumberFilterOp; label: string }[] = [
+  { value: "between",    label: "범위" },
+  { value: "eq",         label: "=" },
+  { value: "neq",        label: "≠" },
+  { value: "lt",         label: "<" },
+  { value: "gt",         label: ">" },
+  { value: "lte",        label: "≤" },
+  { value: "gte",        label: "≥" },
+  { value: "isEmpty",    label: "비어있음" },
+  { value: "isNotEmpty", label: "값 있음" },
+];
+
 function FilterInput({
   filterType, selectOptions, value, onChange,
 }: {
@@ -146,53 +175,152 @@ function FilterInput({
     width: "100%",
     fontSize: 12,
     padding: "4px 6px",
+    height: "auto",
+    minHeight: 0,
     border: "1px solid var(--airgrid-border, #e5e7eb)",
     borderRadius: 4,
     background: "var(--airgrid-bg, #ffffff)",
     color: "var(--airgrid-filter-fg, #1f2937)",
     boxSizing: "border-box",
+    fontFamily: "inherit",
+  };
+  // 호스트 앱이 select { appearance: none } 으로 reset 한 경우에도 화살표가
+  // 보이도록 강제. WebkitAppearance 는 React.CSSProperties 타입이 좁아서
+  // 별도 객체에 cast 후 spread.
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "auto",
+    cursor: "pointer",
+    ...({ WebkitAppearance: "auto" } as unknown as React.CSSProperties),
   };
 
   if (filterType === "text") {
+    // legacy string -> TextFilter 매핑.
+    const f: TextFilter =
+      typeof value === "string"
+        ? { op: "contains", value }
+        : (value && typeof value === "object")
+          ? (value as TextFilter)
+          : {};
+    const op: TextFilterOp = f.op ?? "contains";
+    const valueDisabled = op === "isEmpty" || op === "isNotEmpty";
     return (
-      <input
-        type="text"
-        autoFocus
-        placeholder="검색…"
-        value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value || undefined)}
-        style={inputStyle}
-      />
-    );
-  }
-  if (filterType === "numberRange") {
-    const range = (value as { min?: number; max?: number } | undefined) ?? {};
-    return (
-      <div style={{ display: "flex", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <select
+          value={op}
+          onChange={(e) => {
+            const next = e.target.value as TextFilterOp;
+            if (next === "isEmpty" || next === "isNotEmpty") {
+              onChange({ op: next });
+            } else {
+              onChange({ op: next, value: f.value ?? "" });
+            }
+          }}
+          style={selectStyle}
+        >
+          {TEXT_OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
         <input
-          type="number"
+          type="text"
           autoFocus
-          placeholder="min"
-          value={range.min ?? ""}
-          onChange={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            onChange({ ...range, min: v });
+          placeholder={valueDisabled ? "(값 입력 불필요)" : "검색…"}
+          value={f.value ?? ""}
+          disabled={valueDisabled}
+          onChange={(e) => onChange({ op, value: e.target.value })}
+          style={{
+            ...inputStyle,
+            opacity: valueDisabled ? 0.5 : 1,
+            background: valueDisabled
+              ? "var(--airgrid-header-bg, #f9fafb)"
+              : "var(--airgrid-bg, #ffffff)",
           }}
-          style={inputStyle}
-        />
-        <input
-          type="number"
-          placeholder="max"
-          value={range.max ?? ""}
-          onChange={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            onChange({ ...range, max: v });
-          }}
-          style={inputStyle}
         />
       </div>
     );
   }
+
+  if (filterType === "numberRange") {
+    // legacy { min, max } -> NumberFilter 매핑.
+    let f: NumberFilter;
+    if (value && typeof value === "object") {
+      const obj = value as NumberFilter;
+      f = (!obj.op && (obj.min != null || obj.max != null))
+        ? { op: "between", min: obj.min, max: obj.max }
+        : obj;
+    } else {
+      f = {};
+    }
+    const op: NumberFilterOp = f.op ?? "between";
+    const setOp = (next: NumberFilterOp) => {
+      if (next === "isEmpty" || next === "isNotEmpty") {
+        onChange({ op: next });
+      } else if (next === "between") {
+        onChange({ op: next, min: f.min, max: f.max });
+      } else {
+        onChange({ op: next, value: f.value });
+      }
+    };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <select
+          value={op}
+          onChange={(e) => setOp(e.target.value as NumberFilterOp)}
+          style={selectStyle}
+        >
+          {NUM_OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {op === "between" ? (
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              type="number"
+              autoFocus
+              placeholder="min"
+              value={f.min ?? ""}
+              onChange={(e) => {
+                const v = e.target.value === "" ? undefined : Number(e.target.value);
+                onChange({ op: "between", min: v, max: f.max });
+              }}
+              style={inputStyle}
+            />
+            <input
+              type="number"
+              placeholder="max"
+              value={f.max ?? ""}
+              onChange={(e) => {
+                const v = e.target.value === "" ? undefined : Number(e.target.value);
+                onChange({ op: "between", min: f.min, max: v });
+              }}
+              style={inputStyle}
+            />
+          </div>
+        ) : (op === "isEmpty" || op === "isNotEmpty") ? (
+          <input
+            type="text"
+            placeholder="(값 입력 불필요)"
+            disabled
+            style={{
+              ...inputStyle,
+              opacity: 0.5,
+              background: "var(--airgrid-header-bg, #f9fafb)",
+            }}
+          />
+        ) : (
+          <input
+            type="number"
+            autoFocus
+            placeholder="값"
+            value={f.value ?? ""}
+            onChange={(e) => {
+              const v = e.target.value === "" ? undefined : Number(e.target.value);
+              onChange({ op, value: v });
+            }}
+            style={inputStyle}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (filterType === "boolean") {
     const v = value === true ? "true" : value === false ? "false" : "any";
     return (
@@ -202,7 +330,7 @@ function FilterInput({
           const next = e.target.value;
           onChange(next === "any" ? undefined : next === "true");
         }}
-        style={inputStyle}
+        style={selectStyle}
       >
         <option value="any">전체</option>
         <option value="true">예</option>
@@ -220,7 +348,7 @@ function FilterInput({
           const next = Array.from(e.target.selectedOptions, (o) => o.value);
           onChange(next.length === 0 ? undefined : next);
         }}
-        style={{ ...inputStyle, height: 100 }}
+        style={{ ...selectStyle, height: 100 }}
       >
         {selectOptions.map((opt) => (
           <option key={opt} value={opt}>{opt}</option>
@@ -229,6 +357,16 @@ function FilterInput({
     );
   }
   return null;
+}
+
+// 모든 필터 타입에 대해 "활성" 여부 — 초기화 버튼 노출 판단.
+function isAnyFilterActive(filterType: string, value: unknown): boolean {
+  if (value == null) return false;
+  if (filterType === "text") return isTextFilterActive(value);
+  if (filterType === "numberRange") return isNumberFilterActive(value);
+  if (filterType === "select") return Array.isArray(value) && value.length > 0;
+  if (filterType === "boolean") return value !== "any" && value != null;
+  return false;
 }
 
 function PopoverButton({

@@ -213,30 +213,48 @@ const priorityBadgeStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
+// 호스트 앱이 button { height/background/color } 를 강하게 reset 하더라도
+// 패널 안 버튼이 안 망가지게 inline 으로 강제.
 const dirButtonStyle: React.CSSProperties = {
   fontSize: 11,
-  padding: "2px 6px",
-  border: "1px solid var(--airgrid-border, #e5e7eb)",
+  padding: "3px 8px",
+  height: "auto",
+  minHeight: 0,
+  border: "1px solid var(--airgrid-border, #d1d5db)",
   borderRadius: 3,
-  background: "transparent",
+  background: "var(--airgrid-bg, #ffffff)",
+  color: "var(--airgrid-fg, #1f2937)",
   cursor: "pointer",
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
 };
 
 const removeButtonStyle: React.CSSProperties = {
   fontSize: 12,
-  padding: "0 6px",
-  border: "1px solid transparent",
+  padding: "2px 8px",
+  height: "auto",
+  minHeight: 0,
+  border: "1px solid var(--airgrid-border-subtle, #eceef1)",
   borderRadius: 3,
   background: "transparent",
-  color: "var(--airgrid-empty-fg, #9ca3af)",
+  color: "var(--airgrid-empty-fg, #6b7280)",
   cursor: "pointer",
+  fontFamily: "inherit",
 };
 
 const addSelectStyle: React.CSSProperties = {
   flex: 1,
   fontSize: 11,
   padding: "4px 6px",
+  height: "auto",
+  minHeight: 0,
   border: "1px solid var(--airgrid-border, #e5e7eb)",
   borderRadius: 4,
   background: "var(--airgrid-bg, #ffffff)",
+  color: "var(--airgrid-fg, #1f2937)",
+  fontFamily: "inherit",
+  appearance: "auto",
+  cursor: "pointer",
+  // React.CSSProperties 타입이 좁아 별도 cast.
+  ...({ WebkitAppearance: "auto" } as unknown as React.CSSProperties),
 };

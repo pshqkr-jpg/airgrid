@@ -207,13 +207,21 @@ function SortBadge({ index, dir }: { index: number; dir: "asc" | "desc" }) {
 }
 
 // 필터 indicator 활성 여부. 공백만 / 빈 객체 / 빈 배열 등 의미 없는 값은 false.
+// text/numberRange 객체 형태 ({ op, value, min, max }) 도 인식.
 function isFilterActive(v: unknown): boolean {
   if (v == null) return false;
   if (typeof v === "string") return v.trim() !== "";
+  if (typeof v === "boolean") return true;
   if (Array.isArray(v)) return v.length > 0;
   if (typeof v === "object") {
-    const r = v as { min?: number; max?: number };
-    return r.min != null || r.max != null;
+    const o = v as Record<string, unknown>;
+    const op = typeof o.op === "string" ? o.op : null;
+    if (op === "isEmpty" || op === "isNotEmpty") return true;
+    if (typeof o.value === "string" && o.value.trim() !== "") return true;
+    if (typeof o.value === "number" && Number.isFinite(o.value)) return true;
+    if (typeof o.min === "number" && Number.isFinite(o.min)) return true;
+    if (typeof o.max === "number" && Number.isFinite(o.max)) return true;
+    return false;
   }
   return true;
 }
