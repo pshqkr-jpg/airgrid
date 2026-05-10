@@ -34,7 +34,10 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 3 : "auto",
     borderRight: "1px solid var(--airgrid-border-subtle, #eceef1)",
-    background: isDragging ? "var(--airgrid-header-bg, #f9fafb)" : "transparent",
+    // 헤더 background 와 하단 경계선은 cell 단위로 — row 에 두면 가로
+    // 스크롤 시 우측 overflow 영역에 안 깔리는 이슈.
+    background: "var(--airgrid-header-bg, #f9fafb)",
+    borderBottom: "1px solid var(--airgrid-border, #e5e7eb)",
     display: "flex",
     alignItems: "center",
     minWidth: 0,

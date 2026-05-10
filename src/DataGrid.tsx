@@ -485,15 +485,13 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                     position: "absolute",
                     top: 0,
                     left: 0,
-                    // 가로 스크롤 시 cell 합산까지 row 확장 — borderBottom 이
-                    // 우측 overflow 영역에도 그려지게.
-                    minWidth: "100%",
-                    width: "max-content",
+                    width: "100%",
                     minHeight: estimatedRowHeight,
                     transform: `translateY(${vRow.start}px)`,
                     display: "grid",
                     gridTemplateColumns,
-                    borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
+                    // borderBottom 은 cellStyle 로 옮김 — 가로 스크롤 시 cell
+                    // 영역에 따라 그려져 우측 overflow 까지 자연스럽게 이어짐.
                     cursor: onRowClick ? "pointer" : undefined,
                   }}
                   data-airgrid-row
@@ -600,12 +598,8 @@ const headerRowStyle: React.CSSProperties = {
   position: "sticky",
   top: 0,
   zIndex: 2,
-  background: "var(--airgrid-header-bg, #f9fafb)",
-  borderBottom: "1px solid var(--airgrid-border, #e5e7eb)",
-  // 가로 스크롤 시 cell 합산 width 까지 row 가 확장되도록. width:100% 만 두면
-  // cell 이 row 영역을 넘어가 background 가 viewport 까지만 깔리는 이슈.
-  minWidth: "100%",
-  width: "max-content",
+  // background / borderBottom 은 HeaderCell wrapperStyle 에서 cell 단위로 줌.
+  // row 자체에 두면 가로 스크롤 시 cell overflow 영역까지 안 깔리는 이슈.
 };
 
 const cellStyle: React.CSSProperties = {
@@ -615,6 +609,9 @@ const cellStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
+  // 행 구분선 — row 가 아니라 cell 단위에 두어 가로 스크롤 시 우측 overflow
+  // 까지 자연스럽게 이어짐.
+  borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
 };
 
 const emptyRowStyle: React.CSSProperties = {
