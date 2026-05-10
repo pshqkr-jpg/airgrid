@@ -124,6 +124,11 @@ export type DataGridProps<TRow> = {
    * 미정의 시 클라가 가진 data.length 사용 (page 단위만 보유한 경우 불정확).
    */
   totalCount?: number;
+  /**
+   * 컨트롤바 우측 (정렬·컬럼 메뉴 앞) 에 추가 노출할 컨트롤. 호스트가 검색바
+   * 같은 1회성 도구를 끼워 넣을 때 사용.
+   */
+  controls?: ReactNode;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -138,7 +143,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     viewState, onViewStateChange,
     onRowClick,
     onLoadMore, hasMore, isLoadingMore, loadMoreThreshold = 10,
-    manualSorting, manualFiltering, totalCount,
+    manualSorting, manualFiltering, totalCount, controls,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -398,7 +403,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
             헤더 우클릭으로 필터·정렬
           </span>
         </span>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {controls}
           <button
             type="button"
             onClick={(e) => setSortPanelAnchor({ x: e.clientX - 240, y: e.clientY + 8 })}
