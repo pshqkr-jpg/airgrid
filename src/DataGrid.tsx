@@ -485,7 +485,10 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                     position: "absolute",
                     top: 0,
                     left: 0,
-                    width: "100%",
+                    // 가로 스크롤 시 cell 합산까지 row 확장 — borderBottom 이
+                    // 우측 overflow 영역에도 그려지게.
+                    minWidth: "100%",
+                    width: "max-content",
                     minHeight: estimatedRowHeight,
                     transform: `translateY(${vRow.start}px)`,
                     display: "grid",
@@ -599,6 +602,10 @@ const headerRowStyle: React.CSSProperties = {
   zIndex: 2,
   background: "var(--airgrid-header-bg, #f9fafb)",
   borderBottom: "1px solid var(--airgrid-border, #e5e7eb)",
+  // 가로 스크롤 시 cell 합산 width 까지 row 가 확장되도록. width:100% 만 두면
+  // cell 이 row 영역을 넘어가 background 가 viewport 까지만 깔리는 이슈.
+  minWidth: "100%",
+  width: "max-content",
 };
 
 const cellStyle: React.CSSProperties = {
