@@ -130,11 +130,17 @@ export type DataGridProps<TRow> = {
    */
   controls?: ReactNode;
   /**
-   * 검색 — 정의되면 그리드 상단에 검색바 자동 노출. controlled state.
-   *   - searchableColumns: 검색 가능 컬럼 list (전체 + 컬럼별 선택)
-   *   - searchValue / searchColumn: 현재 값 ("" 면 미검색 / "" 컬럼 = 전체)
-   *   - onSearchChange / onSearchColumnChange: 변화 콜백
-   * 호스트가 backend 호출에 그 값을 위에 전달.
+   * 검색 — 그리드 상단에 검색바 자동 노출.
+   *
+   * 두 모드:
+   *  A. controlled — searchValue + onSearchChange 제공. 호스트가 backend
+   *     호출에 검색어 전달. 라이브러리는 UI 만 렌더, 필터링은 호스트 책임.
+   *  B. uncontrolled (기본) — 미제공 시 라이브러리 내부 state + client-side
+   *     globalFilter 자동 동작. searchableColumns 도 미제공 시 columns 중
+   *     `filterType==="text"` 인 것들로 자동 추론. 페이지 변경 ✗ 만으로
+   *     모든 DataGrid 사용처에 검색이 자동 활성.
+   *
+   * searchColumn === "" (전체) 또는 특정 컬럼 id. 셀렉터로 선택.
    */
   searchableColumns?: { id: string; label: string }[];
   searchValue?: string;
@@ -142,6 +148,11 @@ export type DataGridProps<TRow> = {
   onSearchChange?: (v: string) => void;
   onSearchColumnChange?: (col: string) => void;
   searchPlaceholder?: string;
+  /**
+   * 검색바 자동 노출 off — 검색 인터페이스가 부적절한 그리드 (예: 한 행만
+   * 보이는 detail) 전용.
+   */
+  disableSearch?: boolean;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -159,7 +170,28 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     manualSorting, manualFiltering, totalCount, controls,
     searchableColumns, searchValue, searchColumn,
     onSearchChange, onSearchColumnChange, searchPlaceholder,
+    disableSearch,
   } = props;
+
+  // 검색 — controlled (호스트가 searchValue 제공) vs uncontrolled (라이브러리
+  // 내부 state). uncontrolled 면 globalFilter 로 client-side 자동 필터.
+  const isSearchControlled = searchValue !== undefined;
+  const [internalSearchValue, setInternalSearchValue] = useState("");
+  const [internalSearchColumn, setInternalSearchColumn] = useState("");
+  const effectiveSearchValue  = isSearchControlled ? (searchValue  ?? "") : internalSearchValue;
+  const effectiveSearchColumn = isSearchControlled ? (searchColumn ?? "") : internalSearchColumn;
+
+  // searchableColumns 미제공 시 columns 중 filterType="text" 인 것들에서 자동 추론.
+  const autoSearchableColumns = useMemo(() => columns
+    .filter((c) => c.filterType === "text")
+    .map((c) => ({
+      id: c.id,
+      label: typeof c.header === "string" && c.header ? c.header : c.id,
+    })),
+    [columns],
+  );
+  const effectiveSearchableColumns = searchableColumns ?? autoSearchableColumns;
+  const showSearchBar = !disableSearch && effectiveSearchableColumns.length > 0;
 
   const isControlled = viewState !== undefined;
 
@@ -263,10 +295,19 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     [columns, onCellEdit, rowKey],
   );
 
+  // uncontrolled 검색일 때만 globalFilter 적용. controlled 모드는 호스트가
+  // 이미 필터된 row 를 넘기니까 라이브러리는 패스.
+  const internalGlobalFilter = isSearchControlled || manualFiltering
+    ? ""
+    : effectiveSearchValue;
+
   const table = useReactTable({
     data,
     columns: tableColumns,
-    state: { sorting, columnFilters, columnVisibility, columnOrder, columnSizing },
+    state: {
+      sorting, columnFilters, columnVisibility, columnOrder, columnSizing,
+      globalFilter: internalGlobalFilter,
+    },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
@@ -283,6 +324,19 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     isMultiSortEvent: (e) => (e as React.MouseEvent).shiftKey,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
+    // 검색 컬럼이 ""(전체) 면 검색 가능 컬럼 OR 매칭, 특정 컬럼이면 그 컬럼만.
+    globalFilterFn: (row, _id, fv: string) => {
+      const lc = String(fv ?? "").trim().toLowerCase();
+      if (!lc) return true;
+      const ids = effectiveSearchColumn
+        ? [effectiveSearchColumn]
+        : effectiveSearchableColumns.map((c) => c.id);
+      return ids.some((cid) => {
+        const v = row.getValue(cid);
+        if (v == null) return false;
+        return String(v).toLowerCase().includes(lc);
+      });
+    },
   });
 
   // dnd-kit sensors — mouse 4px 임계값으로 클릭(정렬)과 드래그 분리.
@@ -445,16 +499,22 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       </div>
 
       {/* 검색바 + 활성 필터 칩 — 둘 중 하나라도 의미 있으면 행 노출 */}
-      {(searchableColumns || columnFilters.length > 0) && (
+      {(showSearchBar || columnFilters.length > 0) && (
         <div style={searchBarRowStyle}>
-          {searchableColumns && (
+          {showSearchBar && (
             <SearchInline
-              value={searchValue ?? ""}
-              column={searchColumn ?? ""}
-              columns={searchableColumns}
+              value={effectiveSearchValue}
+              column={effectiveSearchColumn}
+              columns={effectiveSearchableColumns}
               placeholder={searchPlaceholder ?? "검색어 입력"}
-              onChange={onSearchChange ?? (() => {})}
-              onColumnChange={onSearchColumnChange ?? (() => {})}
+              onChange={(v) => {
+                if (isSearchControlled) onSearchChange?.(v);
+                else setInternalSearchValue(v);
+              }}
+              onColumnChange={(c) => {
+                if (isSearchControlled) onSearchColumnChange?.(c);
+                else setInternalSearchColumn(c);
+              }}
             />
           )}
           {columnFilters.length > 0 && (
@@ -556,6 +616,9 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                 >
                   {row.getVisibleCells().map((cell) => {
                     const meta = cell.column.columnDef.meta as AirgridMeta | undefined;
+                    // 셀 폭보다 내용이 길면 wrap 의 text-overflow 가 "…" 표시.
+                    // 자식이 text/inline (<strong>, <span>, <code>) 일 때 동작.
+                    // block/flex 자식 (<button>, 다단 div) 은 자체 잘림 규칙 우선.
                     return (
                       <div
                         key={cell.id}
@@ -566,7 +629,9 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                           justifyContent: meta?.align === "right" ? "flex-end" : "flex-start",
                         }}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        <div style={cellInnerStyle}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
                       </div>
                     );
                   })}
@@ -854,6 +919,16 @@ const cellStyle: React.CSSProperties = {
   // 행 구분선 — row 가 아니라 cell 단위에 두어 가로 스크롤 시 우측 overflow
   // 까지 자연스럽게 이어짐.
   borderBottom: "1px solid var(--airgrid-border-subtle, #eceef1)",
+};
+
+// 셀 내용 wrap — flex item 안에서 text-overflow:"ellipsis" 가 동작하려면
+// 자식이 min-width:0 + overflow:hidden + white-space:nowrap 이어야 함.
+const cellInnerStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const emptyRowStyle: React.CSSProperties = {
