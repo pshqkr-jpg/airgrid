@@ -125,10 +125,23 @@ export type DataGridProps<TRow> = {
    */
   totalCount?: number;
   /**
-   * 컨트롤바 우측 (정렬·컬럼 메뉴 앞) 에 추가 노출할 컨트롤. 호스트가 검색바
-   * 같은 1회성 도구를 끼워 넣을 때 사용.
+   * 컨트롤바 우측 (정렬·컬럼 메뉴 앞) 에 추가 노출할 컨트롤. 호스트가 추가
+   * 액션 버튼 등 끼워 넣을 때 사용. (검색바는 별도 search* props 사용.)
    */
   controls?: ReactNode;
+  /**
+   * 검색 — 정의되면 그리드 상단에 검색바 자동 노출. controlled state.
+   *   - searchableColumns: 검색 가능 컬럼 list (전체 + 컬럼별 선택)
+   *   - searchValue / searchColumn: 현재 값 ("" 면 미검색 / "" 컬럼 = 전체)
+   *   - onSearchChange / onSearchColumnChange: 변화 콜백
+   * 호스트가 backend 호출에 그 값을 위에 전달.
+   */
+  searchableColumns?: { id: string; label: string }[];
+  searchValue?: string;
+  searchColumn?: string;
+  onSearchChange?: (v: string) => void;
+  onSearchColumnChange?: (col: string) => void;
+  searchPlaceholder?: string;
 };
 
 export function DataGrid<TRow extends Record<string, unknown>>(
@@ -144,6 +157,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
     onRowClick,
     onLoadMore, hasMore, isLoadingMore, loadMoreThreshold = 10,
     manualSorting, manualFiltering, totalCount, controls,
+    searchableColumns, searchValue, searchColumn,
+    onSearchChange, onSearchColumnChange, searchPlaceholder,
   } = props;
 
   const isControlled = viewState !== undefined;
@@ -429,6 +444,49 @@ export function DataGrid<TRow extends Record<string, unknown>>(
         </div>
       </div>
 
+      {/* 검색바 + 활성 필터 칩 — 둘 중 하나라도 의미 있으면 행 노출 */}
+      {(searchableColumns || columnFilters.length > 0) && (
+        <div style={searchBarRowStyle}>
+          {searchableColumns && (
+            <SearchInline
+              value={searchValue ?? ""}
+              column={searchColumn ?? ""}
+              columns={searchableColumns}
+              placeholder={searchPlaceholder ?? "검색어 입력"}
+              onChange={onSearchChange ?? (() => {})}
+              onColumnChange={onSearchColumnChange ?? (() => {})}
+            />
+          )}
+          {columnFilters.length > 0 && (
+            <div style={chipsStyle}>
+              {columnFilters.map((cf) => {
+                const col = table.getColumn(cf.id);
+                if (!col) return null;
+                const label = (col.columnDef.header ?? cf.id) as string;
+                const summary = summarizeFilterValue(cf.value);
+                return (
+                  <FilterChip
+                    key={cf.id}
+                    label={typeof label === "string" ? label : cf.id}
+                    summary={summary}
+                    onOpen={(e) => openPopover(cf.id, { x: e.clientX, y: e.clientY })}
+                    onClear={() => col.setFilterValue(undefined)}
+                  />
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setColumnFilters([])}
+                style={chipClearAllStyle}
+                title="모든 필터 해제"
+              >
+                전체 해제
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div
         ref={containerRef}
         style={{ ...containerStyle, height }}
@@ -574,6 +632,149 @@ function buildCellRenderer<TRow extends Record<string, unknown>>(
   };
 }
 
+// ─── 필터 칩 + 검색바 ────────────────────────────────────────────
+
+// summarizeFilterValue — column.getFilterValue() 의 값을 짧은 텍스트로.
+// text: "내용", numberRange: "5~10" / "≥5" / "=5", select: "A, B + 2", boolean: "참".
+function summarizeFilterValue(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "boolean") return v ? "참" : "거짓";
+  if (Array.isArray(v)) {
+    if (v.length === 0) return "";
+    if (v.length <= 2) return v.join(", ");
+    return `${v[0]}, ${v[1]} +${v.length - 2}`;
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const op = typeof o.op === "string" ? o.op : null;
+    if (op === "isEmpty") return "비어있음";
+    if (op === "isNotEmpty") return "비어있지 않음";
+    if (op === "between") {
+      const min = typeof o.min === "number" ? o.min : (typeof o.value === "number" ? o.value : null);
+      const max = typeof o.max === "number" ? o.max : null;
+      if (min != null && max != null) return `${min}~${max}`;
+      if (min != null) return `≥${min}`;
+      if (max != null) return `≤${max}`;
+    }
+    const opMap: Record<string, string> = {
+      eq: "=", neq: "≠",
+      lt: "<", lte: "≤", gt: ">", gte: "≥",
+      contains: "포함", notContains: "미포함",
+      is: "=", isNot: "≠",
+      startsWith: "시작", endsWith: "끝",
+    };
+    const sym = op && opMap[op] ? opMap[op] : "";
+    const value = typeof o.value === "string" || typeof o.value === "number" ? String(o.value) : "";
+    if (typeof o.min === "number" || typeof o.max === "number") {
+      const min = typeof o.min === "number" ? String(o.min) : "";
+      const max = typeof o.max === "number" ? String(o.max) : "";
+      return `${min}~${max}`;
+    }
+    return value ? `${sym}${sym && /^[가-힣]/.test(value) ? " " : ""}${value}` : sym;
+  }
+  return String(v);
+}
+
+function FilterChip({
+  label, summary, onOpen, onClear,
+}: {
+  label: string;
+  summary: string;
+  onOpen: (e: React.MouseEvent) => void;
+  onClear: () => void;
+}) {
+  return (
+    <span style={chipBaseStyle}>
+      <button
+        type="button"
+        onClick={onOpen}
+        style={{
+          background: "transparent", border: "none", padding: 0,
+          color: "inherit", cursor: "pointer", fontSize: "inherit",
+          fontFamily: "inherit",
+        }}
+        title="이 필터 편집"
+      >
+        <strong>{label}</strong>{summary ? `: ${summary}` : ""}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onClear(); }}
+        aria-label="필터 제거"
+        title="필터 제거"
+        style={{
+          background: "transparent", border: "none", padding: 0,
+          color: "inherit", cursor: "pointer", fontSize: 13, lineHeight: 1,
+          marginLeft: 2,
+        }}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function SearchInline({
+  value, column, columns, placeholder, onChange, onColumnChange,
+}: {
+  value: string;
+  column: string;
+  columns: { id: string; label: string }[];
+  placeholder: string;
+  onChange: (v: string) => void;
+  onColumnChange: (col: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <select
+        value={column}
+        onChange={(e) => onColumnChange(e.target.value)}
+        title="검색 대상 컬럼"
+        style={{
+          fontSize: 11, padding: "3px 6px", height: "auto", minHeight: 0,
+          border: "1px solid var(--airgrid-border, #d1d5db)", borderRadius: 4,
+          background: "var(--airgrid-bg, #ffffff)", cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        <option value="">전체</option>
+        {columns.map((c) => (
+          <option key={c.id} value={c.id}>{c.label}</option>
+        ))}
+      </select>
+      <span aria-hidden style={{ fontSize: 12, color: "var(--airgrid-empty-fg, #9ca3af)" }}>🔍</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") onChange(""); }}
+        placeholder={placeholder}
+        style={{
+          fontSize: 12, padding: "3px 8px", height: "auto", minHeight: 0,
+          border: "1px solid var(--airgrid-border, #d1d5db)", borderRadius: 4,
+          width: 200, fontFamily: "inherit",
+        }}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="검색 초기화"
+          title="검색 초기화 (ESC)"
+          style={{
+            fontSize: 11, padding: "2px 7px", height: "auto", minHeight: 0,
+            border: "1px solid var(--airgrid-border, #e5e7eb)", borderRadius: 4,
+            background: "transparent",
+            color: "var(--airgrid-header-fg, #6b7280)", cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >×</button>
+      )}
+    </div>
+  );
+}
+
 // ─── 기본 스타일 ─────────────────────────────────────────────────
 
 const controlsBarStyle: React.CSSProperties = {
@@ -582,6 +783,47 @@ const controlsBarStyle: React.CSSProperties = {
   alignItems: "center",
   padding: "4px 0",
   marginBottom: 4,
+};
+
+const searchBarRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+  padding: "4px 0",
+  marginBottom: 6,
+};
+
+const chipsStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 4,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const chipBaseStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "2px 6px 2px 8px",
+  border: "1px solid var(--airgrid-active-fg, #4338ca)",
+  background: "var(--airgrid-active-bg, #eef2ff)",
+  color: "var(--airgrid-active-fg, #4338ca)",
+  borderRadius: 12,
+  fontSize: 11,
+  fontFamily: "inherit",
+  cursor: "pointer",
+};
+
+const chipClearAllStyle: React.CSSProperties = {
+  border: "1px solid var(--airgrid-border, #e5e7eb)",
+  background: "transparent",
+  color: "var(--airgrid-header-fg, #6b7280)",
+  borderRadius: 12,
+  padding: "2px 8px",
+  fontSize: 11,
+  fontFamily: "inherit",
+  cursor: "pointer",
 };
 
 const containerStyle: React.CSSProperties = {

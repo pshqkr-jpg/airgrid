@@ -23,7 +23,6 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
   const canSort = header.column.getCanSort();
   const sort = header.column.getIsSorted(); // false | "asc" | "desc"
   const sortIndex = header.column.getSortIndex(); // -1 | 0 | 1 | 2 ...
-  const hasFilter = isFilterActive(header.column.getFilterValue());
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: header.column.id });
@@ -87,7 +86,7 @@ export function HeaderCell<TRow>({ header, onContextMenu }: HeaderCellProps<TRow
         </span>
         {sort === "asc" && <SortBadge index={sortIndex} dir="asc" />}
         {sort === "desc" && <SortBadge index={sortIndex} dir="desc" />}
-        {hasFilter && <FilterDot />}
+        {/* 필터 활성 표시는 그리드 상단 칩 행에서 처리 — 헤더 dot 제거 */}
       </button>
       <DragHandle attributes={attributes} listeners={listeners} />
       <ResizeHandle header={header} />
@@ -229,18 +228,5 @@ function isFilterActive(v: unknown): boolean {
   return true;
 }
 
-function FilterDot() {
-  return (
-    <span
-      aria-label="필터 활성"
-      style={{
-        display: "inline-block",
-        width: 6,
-        height: 6,
-        borderRadius: "50%",
-        background: "var(--airgrid-filter-dot, #4f46e5)",
-        marginLeft: 2,
-      }}
-    />
-  );
-}
+// FilterDot 제거됨 — 필터 활성 표시는 DataGrid 상단의 칩 행이 담당.
+// 헤더에 점 두 개 (sort + filter) 가 겹쳐 보이는 시각 부담을 줄임.
