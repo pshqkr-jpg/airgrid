@@ -155,6 +155,10 @@ export type DataGridProps<TRow> = {
   disableSearch?: boolean;
 };
 
+/** 컬럼 최소 폭 기본 하한(px). ColumnDef.minWidth 미설정 시 적용 — 드래그로
+ *  컬럼이 사라질 만큼 좁아지는 것을 방지. */
+const DEFAULT_MIN_WIDTH = 48;
+
 export function DataGrid<TRow extends Record<string, unknown>>(
   props: DataGridProps<TRow>,
 ) {
@@ -276,6 +280,7 @@ export function DataGrid<TRow extends Record<string, unknown>>(
       const meta: AirgridMeta = {
         align: c.align,
         width: c.width,
+        minWidth: c.minWidth,
         filterType: c.filterType,
         selectOptions: c.selectOptions,
       };
@@ -285,6 +290,8 @@ export function DataGrid<TRow extends Record<string, unknown>>(
         accessorKey: c.accessorKey,
         cell: buildCellRenderer(c, onCellEdit, rowKey),
         meta,
+        // 드래그 리사이즈 하한 — TanStack 기본(20px)은 너무 좁아 컬럼이 사라짐.
+        minSize: c.minWidth ?? DEFAULT_MIN_WIDTH,
         enableSorting: c.sortable !== false,
         enableColumnFilter: !!c.filterType,
       };
@@ -405,6 +412,34 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const containerRef = useRef<HTMLDivElement>(null);
   const rows = table.getRowModel().rows;
 
+  // ── spanGroup: 같은 값이 연속될 때 그룹 첫 행만 값 표시(병합처럼) ──
+  // 그 컬럼으로 1차 정렬(sorting[0]) 됐을 때만 활성 — 안 그러면 그룹이 무의미.
+  // 그룹 경계는 전체(정렬된) row 모델에서 계산하므로 가상 스크롤과 양립.
+  const spanColId = useMemo(() => {
+    const primary = sorting[0]?.id;
+    if (!primary) return null;
+    const col = columns.find((c) => c.id === primary);
+    return col?.spanGroup ? primary : null;
+  }, [sorting, columns]);
+  const groupMeta = useMemo(() => {
+    if (!spanColId) return null;
+    const isStart = new Array<boolean>(rows.length);
+    const parity = new Array<number>(rows.length);
+    let gi = -1;
+    let prev: unknown;
+    let hasPrev = false;
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i].getValue(spanColId);
+      const start = !hasPrev || v !== prev;
+      if (start) gi += 1;
+      isStart[i] = start;
+      parity[i] = gi % 2;
+      prev = v;
+      hasPrev = true;
+    }
+    return { isStart, parity };
+  }, [rows, spanColId]);
+
   // 가변 행 높이 — measureElement 가 실제 DOM 높이 측정. 셀 안에서 줄바꿈
   // (e.g. 다중 라인 상품 목록) 하면 자동으로 행이 늘어남. 단일 라인 행은
   // estimateSize 그대로.
@@ -434,9 +469,14 @@ export function DataGrid<TRow extends Record<string, unknown>>(
   const gridTemplateColumns = useMemo(
     () => visibleColumns
       .map((c) => {
+        const cmeta = c.columnDef.meta as AirgridMeta | undefined;
         const sized = columnSizing[c.id];
-        if (typeof sized === "number" && sized > 0) return `${sized}px`;
-        return (c.columnDef.meta as AirgridMeta | undefined)?.width ?? "minmax(80px, 1fr)";
+        if (typeof sized === "number" && sized > 0) {
+          // 렌더 클램프 — columnSizing 이 어떤 경로로 들어와도 최소폭 보장.
+          const min = cmeta?.minWidth ?? DEFAULT_MIN_WIDTH;
+          return `${Math.max(sized, min)}px`;
+        }
+        return cmeta?.width ?? "minmax(80px, 1fr)";
       })
       .join(" "),
     [visibleColumns, columnSizing],
@@ -590,6 +630,11 @@ export function DataGrid<TRow extends Record<string, unknown>>(
           >
             {virtualItems.map((vRow) => {
               const row = rows[vRow.index];
+              // spanGroup: 그룹 첫 행인지 + 그룹별 배경 틴트(교대).
+              const grpStart = !groupMeta || groupMeta.isStart[vRow.index];
+              const grpTint = groupMeta && groupMeta.parity[vRow.index] === 1
+                ? "var(--airgrid-group-alt, #f6f7f9)"
+                : undefined;
               return (
                 <div
                   key={row.id}
@@ -610,12 +655,18 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                     gridTemplateColumns,
                     // borderBottom 은 cellStyle 로 옮김 — 가로 스크롤 시 cell
                     // 영역에 따라 그려져 우측 overflow 까지 자연스럽게 이어짐.
+                    // 그룹 틴트는 row 에도 깔아 우측 빈 영역까지 커버.
+                    background: grpTint,
                     cursor: onRowClick ? "pointer" : undefined,
                   }}
                   data-airgrid-row
+                  data-group-start={groupMeta ? (grpStart ? "true" : "false") : undefined}
                 >
                   {row.getVisibleCells().map((cell) => {
                     const meta = cell.column.columnDef.meta as AirgridMeta | undefined;
+                    // spanGroup 컬럼은 그룹 첫 행에만 값 표시, 이어지는 행은 빈칸.
+                    const blankSpan = spanColId != null
+                      && cell.column.id === spanColId && !grpStart;
                     // 셀 폭보다 내용이 길면 wrap 의 text-overflow 가 "…" 표시.
                     // 자식이 text/inline (<strong>, <span>, <code>) 일 때 동작.
                     // block/flex 자식 (<button>, 다단 div) 은 자체 잘림 규칙 우선.
@@ -625,12 +676,19 @@ export function DataGrid<TRow extends Record<string, unknown>>(
                         role="gridcell"
                         style={{
                           ...cellStyle,
+                          ...(grpTint ? { background: grpTint } : null),
+                          // 그룹 첫 행 윗 테두리 = 묶음 구분선.
+                          ...(groupMeta && grpStart
+                            ? { borderTop: "1px solid var(--airgrid-group-border, #dfe3e8)" }
+                            : null),
                           textAlign: meta?.align === "right" ? "right" : "left",
                           justifyContent: meta?.align === "right" ? "flex-end" : "flex-start",
                         }}
                       >
                         <div style={cellInnerStyle}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {blankSpan
+                            ? null
+                            : flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </div>
                       </div>
                     );

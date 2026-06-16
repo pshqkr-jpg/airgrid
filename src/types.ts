@@ -26,14 +26,24 @@ export type ColumnDef<TRow> = {
   defaultVisible?: boolean;
   /** CSS grid template column value. e.g. "minmax(120px, 1fr)" */
   width?: string;
+  /** 최소 폭(px). 드래그 리사이즈 하한 + 렌더 시 클램프. 미설정 시 기본 하한(48px). */
+  minWidth?: number;
   /** 정렬 가능 여부. 기본 true. */
   sortable?: boolean;
+  /**
+   * 같은 값이 연속될 때 그룹 첫 행에만 값을 표시(셀 병합처럼)하고 나머지는 비움.
+   * 이 컬럼으로 1차 정렬(sorting[0]) 됐을 때만 적용 — 다른 컬럼 정렬 시엔 일반 표시.
+   * 그룹마다 배경 틴트 교대 + 그룹 첫 행 윗 테두리로 묶음을 시각화.
+   * 가상 스크롤 유지(병합 셀이 아니라 "그룹 첫 행만 표시" 방식).
+   */
+  spanGroup?: boolean;
 };
 
 /** TanStack Table column.meta 에 박는 airgrid 메타 정보. */
 export type AirgridMeta = {
   align?: "left" | "right";
   width?: string;
+  minWidth?: number;
   filterType?: FilterType;
   selectOptions?: string[];
 };
